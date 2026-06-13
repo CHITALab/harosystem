@@ -1,0 +1,49 @@
+# ── 環境変数 / 機密情報 ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+credentials*.json
+secrets/
+
+# ── Node / Angular ──
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ── テスト / カバレッジ ──
+coverage/
+.coverage
+htmlcov/
+
+# ── DB / データ ──
+*.sqlite3
+*.db
+pgdata/
+
+# ── IDE / エディタ ──
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
