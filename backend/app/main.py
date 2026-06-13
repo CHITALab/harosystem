@@ -1,0 +1,88 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from . import models, notify  # noqa: F401  (register models)
+from .database import Base, engine, wait_for_db
+from .routers import events, feeds, ics_io, labels, tasks, webhooks
+
+logger = logging.getLogger("uvicorn.error")
+
+FEED_SYNC_INTERVAL_SEC = 300  # 外部カレンダーの自動同期間隔 (5 分)
+NOTIFY_INTERVAL_SEC = 60  # 通知判定の間隔 (1 分)
+
+wait_for_db()
+Base.metadata.create_all(bind=engine)
+
+# lightweight in-place migrations for columns added after first release
+with engine.begin() as conn:
+    for ddl in (
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS duration_min INTEGER",
+        # タイル個別色 + 通知設定 (2026-06 追加)
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS color VARCHAR(20)",
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS notify_before_min INTEGER NOT NULL DEFAULT 10",
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color VARCHAR(20)",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notify_before_min INTEGER NOT NULL DEFAULT 10",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ",
+        "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS last_error VARCHAR(500)",
+        # ラベル既定の通知設定 (2026-06 追加)
+        "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_default BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_before_min_default INTEGER NOT NULL DEFAULT 10",
+    ):
+        conn.execute(text(ddl))
+
+
+async def _periodic(name: str, interval_sec: int, fn) -> None:
+    """同期関数 fn を interval_sec ごとにスレッドで実行する汎用ループ"""
+    while True:
+        try:
+            # DB/HTTP は同期処理なのでスレッドへ逃がしてイベントループを塞がない
+            await asyncio.to_thread(fn)
+        except Exception as exc:
+            logger.warning("%s loop error: %s", name, exc)
+        await asyncio.sleep(interval_sec)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    loops = [
+        asyncio.create_task(_periodic("feed sync", FEED_SYNC_INTERVAL_SEC, feeds.sync_all_feeds)),
+        asyncio.create_task(
+            _periodic("notify", NOTIFY_INTERVAL_SEC, notify.send_due_notifications)
+        ),
+    ]
+    yield
+    for t in loops:
+        t.cancel()
+
+
+app = FastAPI(title="harosystem API", lifespan=lifespan)
+
+# 通常は nginx 経由の同一オリジンなので CORS は不要だが、
+# 開発時 (ng serve :4200 → :8000 直叩き) のためにローカルのみ許可する。
+# ワイルドカード許可はブラウザ起点の攻撃面を広げるため使わない。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
+app.include_router(events.router, prefix="/api/events", tags=["events"])
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"])
+app.include_router(ics_io.router, prefix="/api/ics", tags=["ics"])
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}

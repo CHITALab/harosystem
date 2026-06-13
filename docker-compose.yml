@@ -1,0 +1,69 @@
+# --------------------------------------------------------------------------
+# Docker Compose 構成ファイル — harosystem
+#
+# 3 つのサービスで構成:
+#   db       : PostgreSQL データベース
+#   backend  : FastAPI REST API サーバー
+#   frontend : Nginx (静的ファイル配信 + HTTPS 終端 + リバースプロキシ)
+#
+# 起動:
+#   docker compose up --build -d
+#
+# アクセス:
+#   https://localhost:4443  (HTTPS, 自己署名証明書)
+#   http://localhost:4200   (HTTP, HTTPS へ自動リダイレクト)
+# --------------------------------------------------------------------------
+
+services:
+  # ── データベース ──
+  # PostgreSQL 16 (Alpine) — 軽量な公式イメージを使用。
+  # データは名前付きボリューム "pgdata" に永続化される。
+  # 認証情報は .env から注入する (cp .env.example .env で作成)。
+  # ":?" 付きのため未設定の場合は起動時にエラーで止まる。
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── バックエンド ──
+  # FastAPI + Uvicorn。起動時に DB 接続待機 → テーブル作成 → バックグラウンド
+  # タスク (フィード同期 / 通知) を開始する。
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── フロントエンド ──
+  # Nginx が Angular SPA を配信し、/api/* を backend へプロキシする。
+  # HTTPS (自己署名証明書) に対応。
+  frontend:
+    build: ./frontend
+    ports:
+      - "4200:80"     # HTTP  (HTTPS へ自動リダイレクト)
+      - "4443:443"    # HTTPS (自己署名証明書)
+    depends_on:
+      - backend
+
+# 名前付きボリューム — PostgreSQL データの永続化
+volumes:
+  pgdata:
+
+networks:
+  # ホストのアップリンク (USB テザリング等) が MTU 1400 のため、
+  # コンテナ側も合わせないと外部への TLS ハンドシェイクが
+  # パケットロスでタイムアウトする (ICS フィード同期が失敗する原因)
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: 1400

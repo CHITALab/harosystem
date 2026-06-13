@@ -1,0 +1,72 @@
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
+
+from .. import models, schemas
+from ..database import get_db
+
+router = APIRouter()
+
+
+@router.get("", response_model=list[schemas.TaskOut])
+def list_tasks(
+    start: datetime | None = Query(None),
+    end: datetime | None = Query(None),
+    label_id: int | None = Query(None),
+    include_no_due: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    q = db.query(models.Task).options(joinedload(models.Task.label))
+    if start and end:
+        cond = (models.Task.due_at >= start) & (models.Task.due_at < end)
+        if include_no_due:
+            cond = cond | models.Task.due_at.is_(None)
+        q = q.filter(cond)
+    if label_id:
+        q = q.filter(models.Task.label_id == label_id)
+    return q.order_by(models.Task.done, models.Task.due_at.nulls_last()).all()
+
+
+@router.get("/{task_id}", response_model=schemas.TaskOut)
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    return task
+
+
+@router.post("", response_model=schemas.TaskOut, status_code=201)
+def create_task(payload: schemas.TaskCreate, db: Session = Depends(get_db)):
+    task = models.Task(**payload.model_dump())
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.put("/{task_id}", response_model=schemas.TaskOut)
+def update_task(
+    task_id: int, payload: schemas.TaskUpdate, db: Session = Depends(get_db)
+):
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(task, key, value)
+    # 期限や通知設定が変わったら「通知済み」をリセットして再通知の対象に戻す
+    if {"due_at", "notify_enabled", "notify_before_min"} & data.keys():
+        task.notified_at = None
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.get(models.Task, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    db.delete(task)
+    db.commit()

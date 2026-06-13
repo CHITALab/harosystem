@@ -1,0 +1,389 @@
+/* ============================================================
+ * グローバルスタイル
+ *
+ * 方針: 見た目は原則 Tailwind ユーティリティクラスで
+ * 各コンポーネントのテンプレート内に記述する。
+ * このファイルに置くのは Tailwind では表現しにくい
+ * 「インフラ的」なスタイルのみ:
+ *   1. base   — body 背景・フォーム部品の既定スタイル
+ *   2. md     — innerHTML で挿入される Markdown 描画
+ *               (Tailwind は動的 HTML を走査できないため)
+ *   3. calendar infra — タイムグリッドの罫線/ドラッグ演出など
+ * 通常の画面修正でこのファイルを触る必要はない。
+ * 色を変えたい場合は tailwind.config.js を編集すること。
+ * ============================================================ */
+
+@use '@angular/material' as mat;
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- -1. テーマ定義 (CSS 変数) ----------
+ * 配色はすべてここで RGB 三つ組 (例: 0 240 255) として定義し、
+ * tailwind.config.js が rgb(var(--c-x) / α) で参照する。
+ * ThemeService が html[data-theme] / html[data-mode] を切り替える。
+ *
+ * 変数一覧:
+ *   --c-bg/bg2/bg3/panel : 背景 (暗→明 or 明→暗の段階)
+ *   --c-cyan             : 第1アクセント (予定 / 罫線 / フォーカス)
+ *   --c-magenta          : 第2アクセント (タスク / 見出し)
+ *   --c-green/red/yellow : 状態色 (完了 / 危険 / 警告)
+ *   --c-text/dim         : 文字色 (基本 / 補助)
+ *   --c-tile-base        : チップ背景の color-mix 基底色 (完全不透明)
+ *   --chip-mix/--chip-ink: アイテム色の明度補正 (ライトテーマで暗くして可読性確保)
+ */
+
+/* 既定 = ダーク「NEØN」(従来のサイバーパンク配色) */
+:root,
+html[data-theme='neon'] {
+  --c-bg: 7 7 15;
+  --c-bg2: 12 12 26;
+  --c-bg3: 18 18 42;
+  --c-panel: 14 14 32;
+  --c-cyan: 0 240 255;
+  --c-magenta: 255 43 214;
+  --c-green: 57 255 136;
+  --c-red: 255 59 92;
+  --c-yellow: 245 230 66;
+  --c-text: 216 230 255;
+  --c-dim: 111 127 168;
+  --c-tile-base: #0c0c1a;
+  --chip-mix: 100%;
+  --chip-ink: #ffffff;
+}
+
+/* ダーク「SYNTHWAVE」— 紫紺ベース + ピンク/ティール */
+html[data-theme='synthwave'] {
+  --c-bg: 13 2 33;
+  --c-bg2: 26 10 51;
+  --c-bg3: 41 19 74;
+  --c-panel: 22 8 46;
+  --c-cyan: 45 226 230;
+  --c-magenta: 246 1 157;
+  --c-green: 0 255 159;
+  --c-red: 255 18 79;
+  --c-yellow: 255 211 25;
+  --c-text: 234 222 255;
+  --c-dim: 142 124 179;
+  --c-tile-base: #160b2e;
+  --chip-mix: 100%;
+  --chip-ink: #ffffff;
+}
+
+/* ダーク「MATRIX」— 黒緑ベース + グリーン/アンバー */
+html[data-theme='matrix'] {
+  --c-bg: 2 10 2;
+  --c-bg2: 5 20 8;
+  --c-bg3: 10 31 13;
+  --c-panel: 4 16 6;
+  --c-cyan: 0 255 65;
+  --c-magenta: 255 174 0;
+  --c-green: 57 255 136;
+  --c-red: 255 59 92;
+  --c-yellow: 245 230 66;
+  --c-text: 198 255 203;
+  --c-dim: 92 138 99;
+  --c-tile-base: #07140a;
+  --chip-mix: 100%;
+  --chip-ink: #ffffff;
+}
+
+/* ライト「PAPER」— 白ベース + ブルー/バイオレット */
+html[data-theme='paper'] {
+  --c-bg: 244 246 251;
+  --c-bg2: 255 255 255;
+  --c-bg3: 232 237 247;
+  --c-panel: 255 255 255;
+  --c-cyan: 2 132 199;
+  --c-magenta: 192 38 211;
+  --c-green: 5 150 105;
+  --c-red: 220 38 38;
+  --c-yellow: 202 138 4;
+  --c-text: 30 41 59;
+  --c-dim: 100 116 139;
+  --c-tile-base: #ffffff;
+  --chip-mix: 60%;
+  --chip-ink: #1e293b;
+}
+
+/* ライト「SAKURA」— 桜色ベース + ローズ/パープル */
+html[data-theme='sakura'] {
+  --c-bg: 253 244 246;
+  --c-bg2: 255 250 251;
+  --c-bg3: 248 230 235;
+  --c-panel: 255 250 251;
+  --c-cyan: 214 51 108;
+  --c-magenta: 156 54 181;
+  --c-green: 43 138 62;
+  --c-red: 224 49 49;
+  --c-yellow: 232 147 12;
+  --c-text: 59 42 50;
+  --c-dim: 158 122 136;
+  --c-tile-base: #fff7f9;
+  --chip-mix: 60%;
+  --chip-ink: #3b2a32;
+}
+
+/* ライト「MINT」— 淡緑ベース + グリーン/ブルー */
+html[data-theme='mint'] {
+  --c-bg: 240 250 246;
+  --c-bg2: 255 255 255;
+  --c-bg3: 224 242 233;
+  --c-panel: 250 255 252;
+  --c-cyan: 12 166 120;
+  --c-magenta: 25 113 194;
+  --c-green: 47 158 68;
+  --c-red: 224 49 49;
+  --c-yellow: 240 140 0;
+  --c-text: 26 46 40;
+  --c-dim: 95 128 115;
+  --c-tile-base: #ffffff;
+  --chip-mix: 60%;
+  --chip-ink: #1a2e28;
+}
+
+/* ---------- 0. Angular Material (使用コンポーネントのみテーマ適用) ----------
+ * レイアウト/装飾は Tailwind、インタラクティブ部品 (snackbar / slide-toggle /
+ * tooltip) は Material という分担。色はライト/ダーク両テーマを用意し、
+ * html[data-mode] (ThemeService が設定) で切り替える。 */
+@include mat.core();
+
+$cyber-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: mat.$cyan-palette,
+    tertiary: mat.$magenta-palette,
+  ),
+  density: (scale: -1),
+));
+
+$cyber-light-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$cyan-palette,
+    tertiary: mat.$magenta-palette,
+  ),
+  density: (scale: -1),
+));
+
+html {
+  @include mat.core-theme($cyber-theme);
+  @include mat.snack-bar-theme($cyber-theme);
+  @include mat.slide-toggle-theme($cyber-theme);
+  @include mat.tooltip-theme($cyber-theme);
+}
+
+/* ライトモード時は Material の色だけ差し替える */
+html[data-mode='light'] {
+  @include mat.snack-bar-color($cyber-light-theme);
+  @include mat.slide-toggle-color($cyber-light-theme);
+  @include mat.tooltip-color($cyber-light-theme);
+}
+
+/* トースト (ToastService) の種類別スタイル。panelClass で切り替わる */
+.toast-success .mdc-snackbar__surface,
+.toast-error .mdc-snackbar__surface,
+.toast-info .mdc-snackbar__surface {
+  background: theme('colors.cyber.bg2') !important;
+  border: 1px solid;
+  border-radius: 0 !important;
+  font-family: theme('fontFamily.mono');
+}
+.toast-success .mdc-snackbar__surface {
+  border-color: theme('colors.cyber.green');
+  box-shadow: 0 0 14px rgb(var(--c-green) / 0.35);
+}
+.toast-success .mdc-snackbar__label { color: theme('colors.cyber.green') !important; }
+.toast-error .mdc-snackbar__surface {
+  border-color: theme('colors.cyber.red');
+  box-shadow: 0 0 14px rgb(var(--c-red) / 0.4);
+}
+.toast-error .mdc-snackbar__label { color: theme('colors.cyber.red') !important; }
+.toast-info .mdc-snackbar__surface {
+  border-color: theme('colors.cyber.cyan');
+  box-shadow: 0 0 14px rgb(var(--c-cyan) / 0.35);
+}
+.toast-info .mdc-snackbar__label { color: theme('colors.cyber.text') !important; }
+
+/* ---------- 1. base ---------- */
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at 20% -10%, rgb(var(--c-magenta) / 0.10), transparent 50%),
+      radial-gradient(ellipse at 85% 110%, rgb(var(--c-cyan) / 0.10), transparent 50%),
+      theme('colors.cyber.bg');
+    color: theme('colors.cyber.text');
+    font-family: theme('fontFamily.mono');
+    font-size: 15px;
+    overflow: hidden;
+  }
+
+  app-root {
+    display: block;
+    height: 100vh;
+  }
+
+  input[type='checkbox'] {
+    accent-color: theme('colors.cyber.cyan');
+    cursor: pointer;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: theme('colors.cyber.bg2');
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-cyan) / 0.3);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.cyber.cyan');
+  }
+}
+
+@layer components {
+  /* テキスト入力系の共通スタイル。テンプレートでは class="input" を付けるだけでよい */
+  .input {
+    @apply w-full bg-cyber-bg2 text-cyber-text border border-cyber-lineStrong px-3 py-2 text-sm outline-none font-mono;
+  }
+  .input:focus {
+    @apply border-cyber-cyan shadow-glow-cyan;
+  }
+}
+
+/* ---------- 2. Markdown 描画 (.md) ----------
+ * MarkdownPipe が生成した HTML ([innerHTML]) に適用される。
+ * Tailwind のクラスは動的 HTML に付与できないためここで定義する。 */
+.md {
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+.md h1, .md h2, .md h3, .md h4 {
+  font-family: theme('fontFamily.head');
+  color: theme('colors.cyber.cyan');
+  letter-spacing: 1px;
+  margin: 14px 0 6px;
+  text-shadow: 0 0 8px rgb(var(--c-cyan) / 0.4);
+}
+.md h1 { font-size: 21px; border-bottom: 1px solid theme('colors.cyber.lineStrong'); padding-bottom: 4px; }
+.md h2 { font-size: 18px; }
+.md h3 { font-size: 16px; }
+.md p { margin: 6px 0; }
+.md a { color: theme('colors.cyber.magenta'); }
+.md ul, .md ol { padding-left: 22px; margin: 6px 0; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 3px 0; }
+.md li::marker { color: theme('colors.cyber.cyan'); }
+.md code {
+  background: rgb(var(--c-cyan) / 0.1);
+  color: theme('colors.cyber.green');
+  padding: 1px 5px;
+  font-size: 13px;
+}
+.md pre {
+  background: theme('colors.cyber.bg3');
+  border: 1px solid theme('colors.cyber.lineStrong');
+  padding: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.md pre code { background: none; padding: 0; }
+.md blockquote {
+  border-left: 3px solid theme('colors.cyber.magenta');
+  padding-left: 12px;
+  color: theme('colors.cyber.dim');
+  margin: 8px 0;
+}
+.md table { border-collapse: collapse; margin: 8px 0; }
+.md th, .md td { border: 1px solid theme('colors.cyber.lineStrong'); padding: 4px 10px; font-size: 13px; }
+.md th { color: theme('colors.cyber.cyan'); background: rgb(var(--c-cyan) / 0.07); }
+.md hr { border: none; border-top: 1px dashed theme('colors.cyber.lineStrong'); margin: 12px 0; }
+/* タスクリスト ( - [ ] ) のチェックボックス。クリックで内容が更新される (detail-panel 参照) */
+.md li:has(> input[type='checkbox']) { list-style: none; margin-left: -18px; }
+.md input[type='checkbox'] { margin-right: 6px; width: 15px; height: 15px; vertical-align: -2px; }
+
+/* ---------- 3. calendar infra ----------
+ * タイムグリッドの背景罫線・D&D 演出など、
+ * JS (classList) やグラデーションと連動する特殊スタイル。 */
+
+/* 1時間ごとの罫線 (72px = 1h) */
+.day-col {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0, transparent 71px,
+    theme('colors.cyber.line') 71px, theme('colors.cyber.line') 72px
+  );
+}
+
+/* 現在時刻の赤いライン */
+.now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid theme('colors.cyber.red');
+  z-index: 40;
+  pointer-events: none;
+  box-shadow: 0 0 8px theme('colors.cyber.red');
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: theme('colors.cyber.red');
+  box-shadow: 0 0 8px theme('colors.cyber.red');
+}
+
+/* チップ下端のリサイズハンドル (ホバーでバーが見える) */
+.resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 9px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  bottom: 2px;
+  border-bottom: 2px solid currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+*:hover > .resize-handle::after {
+  opacity: 0.8;
+}
+
+/* ドラッグ中の見た目 (time-grid が classList.add('dragging') で付与する) */
+.dragging {
+  opacity: 0.85;
+  z-index: 50 !important;
+  cursor: grabbing;
+  box-shadow: 0 0 18px rgb(var(--c-cyan) / 0.6) !important;
+  transition: none;
+  will-change: transform, height; /* GPU レイヤー化でヌルヌル動かす */
+}
+
+/* ドラッグ中はページ全体の文字選択を止める (time-grid が body に付与する) */
+body.is-dragging,
+body.is-dragging * {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
