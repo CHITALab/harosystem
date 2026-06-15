@@ -5,7 +5,9 @@
  */
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { ToastService } from '../core/toast.service';
 import { catchError, tap, EMPTY } from 'rxjs';
 import { StoreService } from '../core/store.service';
@@ -168,12 +170,25 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
         <div class="text-xs text-cyber-dim">タスクなし</div>
       }
     </section>
+
+    <!-- ログアウト (最下部に配置) -->
+    <section class="mt-auto pt-3 border-t border-cyber-line">
+      <ui-button variant="danger" (click)="logout()">Logout</ui-button>
+    </section>
   `,
 })
 export class SidebarComponent {
   store = inject(StoreService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  private auth = inject(AuthService);
+  private router = inject(Router);
+
+  /** ログアウトしてログイン画面へ遷移する */
+  logout(): void {
+    this.auth.logout();
+    this.router.navigateByUrl('/login');
+  }
 
   newName = '';
   newColor = '#00f0ff';

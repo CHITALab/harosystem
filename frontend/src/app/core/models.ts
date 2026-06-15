@@ -91,6 +91,26 @@ export type Selected =
 /** カレンダーの表示スコープ */
 export type ViewMode = 'day' | 'week' | 'month';
 
+/** 認証済みユーザー (GET /api/auth/me のレスポンス) */
+export interface User {
+  id: number;
+  username: string;
+}
+
+/** ログインリクエスト (POST /api/auth/login のボディ) */
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+/** ログインレスポンス (POST /api/auth/login の戻り値) */
+export interface LoginResponse {
+  access_token: string;
+  token_type: string; // 'bearer'
+  user_id: number;
+  username: string;
+}
+
 /** 作成/編集モーダルの状態 */
 export interface FormState {
   kind: 'event' | 'task';

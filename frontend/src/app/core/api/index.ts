@@ -30,6 +30,7 @@ export { TaskApiService } from './task-api.service';
 export { FeedApiService } from './feed-api.service';
 export { WebhookApiService } from './webhook-api.service';
 export { IcsApiService } from './ics-api.service';
+export { AuthApiService } from './auth-api.service';
 export { ICS_EXPORT_URL } from './api-base';
 
 /* ── 個別サービスのインポート（ファサード内部で使用） ── */

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
+from ..auth import get_current_user
 from ..database import SessionLocal, get_db
 from ..ics import parse_ics
 
@@ -113,13 +114,25 @@ def sync_all_feeds() -> None:
 
 
 @router.get("", response_model=list[schemas.FeedOut])
-def list_feeds(db: Session = Depends(get_db)):
-    return db.query(models.Feed).order_by(models.Feed.id).all()
+def list_feeds(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(models.Feed)
+        .filter(models.Feed.user_id == user.id)
+        .order_by(models.Feed.id)
+        .all()
+    )
 
 
 @router.post("", response_model=schemas.FeedOut, status_code=201)
-def create_feed(payload: schemas.FeedCreate, db: Session = Depends(get_db)):
-    feed = models.Feed(**payload.model_dump())
+def create_feed(
+    payload: schemas.FeedCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    feed = models.Feed(**payload.model_dump(), user_id=user.id)
     db.add(feed)
     db.commit()
     db.refresh(feed)
@@ -132,9 +145,14 @@ def create_feed(payload: schemas.FeedCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{feed_id}", response_model=schemas.FeedOut)
-def update_feed(feed_id: int, payload: schemas.FeedUpdate, db: Session = Depends(get_db)):
+def update_feed(
+    feed_id: int,
+    payload: schemas.FeedUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     feed = db.get(models.Feed, feed_id)
-    if not feed:
+    if not feed or feed.user_id != user.id:
         raise HTTPException(404, "Feed not found")
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
@@ -147,18 +165,26 @@ def update_feed(feed_id: int, payload: schemas.FeedUpdate, db: Session = Depends
 
 
 @router.delete("/{feed_id}", status_code=204)
-def delete_feed(feed_id: int, db: Session = Depends(get_db)):
+def delete_feed(
+    feed_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     feed = db.get(models.Feed, feed_id)
-    if not feed:
+    if not feed or feed.user_id != user.id:
         raise HTTPException(404, "Feed not found")
     db.delete(feed)
     db.commit()
 
 
 @router.post("/{feed_id}/sync", response_model=schemas.FeedOut)
-def sync_feed_now(feed_id: int, db: Session = Depends(get_db)):
+def sync_feed_now(
+    feed_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     feed = db.get(models.Feed, feed_id)
-    if not feed:
+    if not feed or feed.user_id != user.id:
         raise HTTPException(404, "Feed not found")
     try:
         sync_feed(db, feed)
@@ -173,12 +199,13 @@ def sync_feed_now(feed_id: int, db: Session = Depends(get_db)):
 def list_feed_events(
     start: datetime | None = Query(None),
     end: datetime | None = Query(None),
+    user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     q = (
         db.query(models.FeedEvent)
         .join(models.Feed)
-        .filter(models.Feed.enabled)
+        .filter(models.Feed.enabled, models.Feed.user_id == user.id)
         .options(joinedload(models.FeedEvent.feed))
     )
     if start:

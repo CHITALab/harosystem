@@ -1,16 +1,31 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
 
-class Label(Base):
-    __tablename__ = "labels"
+class User(Base):
+    """認証ユーザー。将来のマルチユーザー対応のため全リソースの所有者となる"""
+
+    __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class Label(Base):
+    __tablename__ = "labels"
+    # マルチユーザー対応: 同一ユーザー内でラベル名がユニーク
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_labels_user_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
     color: Mapped[str] = mapped_column(String(20), default="#00f0ff")
     # このラベルを付けた予定/タスクの新規作成時に使う通知の既定値
     notify_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -24,6 +39,9 @@ class Event(Base):
     __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="")
     content_type: Mapped[str] = mapped_column(String(10), default="md")  # md | text
@@ -51,6 +69,9 @@ class Feed(Base):
     __tablename__ = "feeds"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     url: Mapped[str] = mapped_column(String(1000), nullable=False)
     color: Mapped[str] = mapped_column(String(20), default="#f5e642")
@@ -89,6 +110,9 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="")
     content_type: Mapped[str] = mapped_column(String(10), default="md")  # md | text
@@ -118,6 +142,9 @@ class Webhook(Base):
     __tablename__ = "webhooks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)  # discord | slack
     url: Mapped[str] = mapped_column(String(1000), nullable=False)
