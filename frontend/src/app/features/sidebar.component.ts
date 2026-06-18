@@ -3,7 +3,7 @@
  *   - ラベル: 追加/削除/クリックで絞り込みトグル
  *   - タスク: チェックボックスで完了切替、クリックで詳細パネル表示
  */
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
@@ -140,6 +140,16 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
           [style.border-left-color]="task.color ?? task.label?.color ?? 'transparent'"
           (click)="store.select({ kind: 'task', item: task })"
         >
+          <!-- サブタスクがある場合のみ開閉キャレット (なければ幅を揃える空白) -->
+          @if (subtasks(task).length) {
+            <button
+              class="shrink-0 w-3 text-center leading-none text-cyber-dim hover:text-cyber-cyan"
+              [title]="isCollapsed(task.id) ? 'サブタスクを展開' : 'サブタスクを折りたたみ'"
+              (click)="toggleCollapse(task.id, $event)"
+            >{{ isCollapsed(task.id) ? '▸' : '▾' }}</button>
+          } @else {
+            <span class="shrink-0 w-3"></span>
+          }
           <input type="checkbox" [checked]="task.done" (click)="toggleDone(task, $event)" />
           <span class="flex-1 truncate">{{ task.title }}</span>
           @if (task.due_at) {
@@ -148,23 +158,25 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
             </span>
           }
         </div>
-        <!-- md 内のチェックボックスをサブタスクとして表示 (クリックで反転) -->
-        @for (sub of subtasks(task); track $index) {
-          <label
-            class="flex items-baseline gap-2 pl-7 pr-2 py-1 cursor-pointer text-xs
-                   text-cyber-dim hover:bg-cyber-cyan/5 select-none border-l-2
-                   border-transparent"
-            [class.line-through]="sub.checked"
-            [class.opacity-50]="sub.checked"
-            (click)="$event.stopPropagation()"
-          >
-            <input
-              type="checkbox"
-              [checked]="sub.checked"
-              (change)="toggleSubtask(task, $index)"
-            />
-            <span class="flex-1 truncate">{{ sub.text }}</span>
-          </label>
+        <!-- md 内のチェックボックスをサブタスクとして表示 (折りたたみ中は隠す / クリックで反転) -->
+        @if (!isCollapsed(task.id)) {
+          @for (sub of subtasks(task); track $index) {
+            <label
+              class="flex items-baseline gap-2 pl-7 pr-2 py-1 cursor-pointer text-xs
+                     text-cyber-dim hover:bg-cyber-cyan/5 select-none border-l-2
+                     border-transparent"
+              [class.line-through]="sub.checked"
+              [class.opacity-50]="sub.checked"
+              (click)="$event.stopPropagation()"
+            >
+              <input
+                type="checkbox"
+                [checked]="sub.checked"
+                (change)="toggleSubtask(task, $index)"
+              />
+              <span class="flex-1 truncate">{{ sub.text }}</span>
+            </label>
+          }
         }
       } @empty {
         <div class="text-xs text-cyber-dim">タスクなし</div>
@@ -188,6 +200,22 @@ export class SidebarComponent {
   logout(): void {
     this.auth.logout();
     this.router.navigateByUrl('/login');
+  }
+
+  /** サブタスクを折りたたみ中の親タスク ID 集合 (既定は全展開) */
+  private readonly collapsedTasks = signal<Set<number>>(new Set());
+
+  /** 指定タスクのサブタスクが折りたたまれているか */
+  isCollapsed(taskId: number): boolean {
+    return this.collapsedTasks().has(taskId);
+  }
+
+  /** 親タスクのサブタスク表示を開閉する (行クリックの詳細表示は発火させない) */
+  toggleCollapse(taskId: number, ev: MouseEvent): void {
+    ev.stopPropagation();
+    const next = new Set(this.collapsedTasks());
+    next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+    this.collapsedTasks.set(next);
   }
 
   newName = '';

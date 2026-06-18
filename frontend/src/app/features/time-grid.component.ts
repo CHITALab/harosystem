@@ -49,6 +49,9 @@ interface TaskSeg {
   task: TaskItem;
   top: number;
   height: number; // 作業時間ぶん (未設定なら最小高)
+  left: string; // 重なり時の横位置 (%)
+  width: string;
+  zIndex: number; // 予定より手前 (20+) に積む
 }
 
 /** 外部カレンダー (購読フィード) の予定。読み取り専用で重ねて表示する */
@@ -91,14 +94,14 @@ interface DragState {
 /** チップ共通クラス。予定/タスクで枠の色・線種を変えている。
  *  背景は不透過 (背面の罫線が透けると読みにくいため、cyber-bg2 ベースの混色)。 */
 const EVENT_CHIP =
-  'absolute left-0.5 overflow-hidden cursor-grab text-[13px] leading-[1.3] px-1.5 py-1 ' +
+  'absolute overflow-hidden cursor-grab text-[13px] leading-[1.3] px-2 py-1 ' +
   'border border-cyber-cyan border-l-[3px] bg-cyber-bg3 ' +
   'shadow-[0_0_8px_rgb(var(--c-cyan)/0.15)] hover:brightness-140 hover:z-30 ' +
   'touch-none select-none';
 const TASK_CHIP =
-  'absolute left-0.5 min-h-[26px] overflow-hidden cursor-grab text-[13px] px-1.5 py-0.5 ' +
+  'absolute min-h-[26px] overflow-hidden cursor-grab text-[13px] px-2 py-0.5 ' +
   'border border-dashed border-cyber-magenta border-l-[3px] border-l-solid bg-cyber-bg3 ' +
-  'z-20 flex items-start gap-1 hover:brightness-140 touch-none select-none';
+  'flex items-start gap-1 hover:brightness-140 touch-none select-none';
 /** 外部カレンダーのチップ: 点線枠・操作不可 (読み取り専用) */
 const FEED_CHIP =
   'absolute left-0.5 right-0.5 overflow-hidden cursor-default text-[12.5px] leading-[1.3] ' +
@@ -233,7 +236,9 @@ const FEED_CHIP =
                   [style.background]="seg.task.done ? 'color-mix(in srgb, rgb(var(--c-green)) 12%, var(--c-tile-base))' : tint(taskColor(seg.task))"
                   [style.top.px]="seg.top"
                   [style.height.px]="seg.height"
-                  [style.right.px]="2"
+                  [style.left]="seg.left"
+                  [style.width]="seg.width"
+                  [style.z-index]="seg.zIndex"
                   [style.border-left-color]="seg.task.done ? null : taskColor(seg.task)"
                   (pointerdown)="dragStart($event, 'task', seg.task, di)"
                   (pointermove)="dragMove($event)"
@@ -312,16 +317,9 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
         date,
         today: sameDay(date, today),
         events: this.layout(dayEvents, date, next),
-        tasks: tasks
-          .filter((t) => t.due_at && sameDay(new Date(t.due_at), date))
-          .map((t) => {
-            const d = new Date(t.due_at!);
-            return {
-              task: t,
-              top: (d.getHours() * 60 + d.getMinutes()) * PX_PER_MIN,
-              height: Math.max(26, (t.duration_min ?? 0) * PX_PER_MIN),
-            };
-          }),
+        tasks: this.layoutTasks(
+          tasks.filter((t) => t.due_at && sameDay(new Date(t.due_at), date)),
+        ),
         feedEvents: feedEvents
           .filter(
             (f) => !f.all_day && new Date(f.start_at) < next && new Date(f.end_at) > date,
@@ -348,21 +346,18 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
   });
 
   /**
-   * 重なっている予定を貪欲法でカスケード状にレイアウトする (Google カレンダー風)。
-   * 重なりグループ (cluster) ごとに列番号を割り当て、
-   * 右の列ほど少し右にずらして手前に重ねる。
-   * 等分割と違い各チップが右端まで伸びるので、タイトルが読みやすい。
+   * top/height を持つ要素群を貪欲法でカスケード状に配置する汎用ロジック。
+   * 重なりグループ (cluster) ごとに列番号 (col) と列総数 (cols) を割り当て、
+   * 各要素に横位置 (leftPct) を付与して返す。予定・タスク共通。
+   *
+   * 右の列ほど少し右にずらして手前に重ねる。等分割と違い各チップが右端まで
+   * 伸びるので、重なってもタイトルが読みやすい (Google カレンダー風)。
    */
-  private layout(dayEvents: EventItem[], dayStart: Date, dayEnd: Date): EventSeg[] {
-    const segs = dayEvents
-      .map((ev) => {
-        // 日をまたぐ予定はこの日の範囲にクリップする
-        const s = Math.max(new Date(ev.start_at).getTime(), dayStart.getTime());
-        const e = Math.min(new Date(ev.end_at).getTime(), dayEnd.getTime());
-        const top = ((s - dayStart.getTime()) / 60000) * PX_PER_MIN;
-        const height = Math.max(((e - s) / 60000) * PX_PER_MIN, 20);
-        return { ev, top, height, col: 0, cols: 1 };
-      })
+  private cascade<T extends { top: number; height: number }>(
+    items: T[],
+  ): (T & { col: number; leftPct: number })[] {
+    const segs = items
+      .map((it) => ({ ...it, col: 0, cols: 1 }))
       .sort((a, b) => a.top - b.top || b.height - a.height);
 
     let cluster: typeof segs = [];
@@ -389,16 +384,53 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
     return segs.map((s) => {
       // 列ごとのずらし幅: 列数が多いほど詰める (最大でも左半分まで)
       const step = s.cols > 1 ? Math.min(50 / (s.cols - 1), 14) : 0;
-      const leftPct = step * s.col;
+      return { ...s, leftPct: step * s.col };
+    });
+  }
+
+  /** 予定をこの日の範囲にクリップし、重なりをカスケード配置する */
+  private layout(dayEvents: EventItem[], dayStart: Date, dayEnd: Date): EventSeg[] {
+    const items = dayEvents.map((ev) => {
+      // 日をまたぐ予定はこの日の範囲にクリップする
+      const s = Math.max(new Date(ev.start_at).getTime(), dayStart.getTime());
+      const e = Math.min(new Date(ev.end_at).getTime(), dayEnd.getTime());
       return {
-        ev: s.ev,
-        top: s.top,
-        height: s.height,
-        left: `calc(${leftPct}% + 2px)`,
-        width: `calc(${100 - leftPct}% - 5px)`,
-        zIndex: 10 + s.col, // 右の列ほど手前に
+        ev,
+        top: ((s - dayStart.getTime()) / 60000) * PX_PER_MIN,
+        height: Math.max(((e - s) / 60000) * PX_PER_MIN, 24),
       };
     });
+    return this.cascade(items).map((s) => ({
+      ev: s.ev,
+      top: s.top,
+      height: s.height,
+      left: `calc(${s.leftPct}% + 2px)`,
+      width: `calc(${100 - s.leftPct}% - 5px)`,
+      zIndex: 10 + s.col, // 右の列ほど手前に
+    }));
+  }
+
+  /**
+   * タスクを期限時刻の位置に作業時間ぶんの高さで並べ、重なりをカスケード配置する。
+   * 予定と同じ cascade ロジックを使い、複数タスクが重なっても被らず読めるようにする。
+   */
+  private layoutTasks(dayTasks: TaskItem[]): TaskSeg[] {
+    const items = dayTasks.map((t) => {
+      const d = new Date(t.due_at!);
+      return {
+        task: t,
+        top: (d.getHours() * 60 + d.getMinutes()) * PX_PER_MIN,
+        height: Math.max(26, (t.duration_min ?? 0) * PX_PER_MIN),
+      };
+    });
+    return this.cascade(items).map((s) => ({
+      task: s.task,
+      top: s.top,
+      height: s.height,
+      left: `calc(${s.leftPct}% + 2px)`,
+      width: `calc(${100 - s.leftPct}% - 5px)`,
+      zIndex: 20 + s.col, // 予定 (10+) より手前に積む
+    }));
   }
 
   /** チップの表示色: 個別色 > ラベル色 > 既定色 (テーマで明度補正) */
