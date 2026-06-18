@@ -10,7 +10,7 @@ import bcrypt
 
 from . import models, notify  # noqa: F401  (register models)
 from .database import Base, engine, wait_for_db
-from .routers import auth, events, feeds, ics_io, labels, tasks, webhooks
+from .routers import auth, events, feeds, ics_io, labels, notes, tasks, webhooks
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -34,6 +34,8 @@ with engine.begin() as conn:
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notify_before_min INTEGER NOT NULL DEFAULT 10",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ",
         "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS last_error VARCHAR(500)",
+        # ノート機能 (2026-06 追加): タスクからノートへの紐付け
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS note_id INTEGER",
         # ラベル既定の通知設定 (2026-06 追加)
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_before_min_default INTEGER NOT NULL DEFAULT 10",
@@ -91,6 +93,17 @@ with engine.begin() as conn:
         END $$;
     """))
 
+    # ④ tasks.note_id の FK 制約 (ノート削除時は SET NULL でタスクは残す)。
+    # notes テーブルは create_all() で作成済みなのでこの時点で参照できる。
+    conn.execute(text("""
+        DO $$ BEGIN
+            ALTER TABLE tasks
+                ADD CONSTRAINT fk_tasks_note
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """))
+
 
 async def _periodic(name: str, interval_sec: int, fn) -> None:
     """同期関数 fn を interval_sec ごとにスレッドで実行する汎用ループ"""
@@ -130,6 +143,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
+app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"])

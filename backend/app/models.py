@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -33,6 +33,7 @@ class Label(Base):
 
     events: Mapped[list["Event"]] = relationship(back_populates="label")
     tasks: Mapped[list["Task"]] = relationship(back_populates="label")
+    notes: Mapped[list["Note"]] = relationship(back_populates="label")
 
 
 class Event(Base):
@@ -132,8 +133,45 @@ class Task(Base):
     label_id: Mapped[int | None] = mapped_column(
         ForeignKey("labels.id", ondelete="SET NULL"), nullable=True
     )
+    # 紐付くノート (任意)。ノート削除時は SET NULL でタスク自体は残す
+    note_id: Mapped[int | None] = mapped_column(
+        ForeignKey("notes.id", ondelete="SET NULL"), nullable=True
+    )
 
     label: Mapped[Label | None] = relationship(back_populates="tasks")
+    note: Mapped["Note | None"] = relationship(back_populates="tasks")
+
+
+class Note(Base):
+    """プロジェクト (Label) に紐づく Markdown ノート。
+
+    1 回で終わらないタスクや調査メモを横断的に 1 箇所へまとめるための機能。
+    Label (1) 対 Note (多) / Note (1) 対 Task (多) の関係を持つ。
+    """
+
+    __tablename__ = "notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="")
+    content_type: Mapped[str] = mapped_column(String(10), default="md")  # md | text
+    # 紐づくプロジェクト (任意)。ラベル削除時は SET NULL でノート自体は残す
+    label_id: Mapped[int | None] = mapped_column(
+        ForeignKey("labels.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    label: Mapped[Label | None] = relationship(back_populates="notes")
+    # ノートに紐づくタスク (Note 1:N Task)。削除時は note_id を SET NULL する
+    tasks: Mapped[list["Task"]] = relationship(back_populates="note")
 
 
 class Webhook(Base):

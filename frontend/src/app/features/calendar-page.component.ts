@@ -75,6 +75,14 @@ import { UiButtonComponent } from '../ui/button.component';
         <ui-button variant="primary" size="lg" (click)="store.openForm({ kind: 'event' })">＋ 予定</ui-button>
         <ui-button variant="primary" size="lg" (click)="store.openForm({ kind: 'task' })">＋ タスク</ui-button>
 
+        <!-- ノート -->
+        <a
+          routerLink="/notes"
+          class="font-head text-sm tracking-wider text-cyber-dim hover:text-cyber-cyan p-1
+                 hover:drop-shadow-[0_0_8px_rgb(var(--c-cyan)/0.8)] transition-all"
+          title="ノート"
+        >NOTES</a>
+
         <!-- 設定 (歯車) -->
         @if (settings.settings().userName; as name) {
           <span class="text-sm text-cyber-dim max-w-[140px] truncate">{{ name }}</span>
@@ -128,6 +136,7 @@ export class CalendarPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.store.loadLabels();
     this.store.loadFeeds();
+    this.store.loadNotes(); // タスクフォームのノート選択で使う
     this.store.reload();
   }
 

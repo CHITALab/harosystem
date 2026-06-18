@@ -147,6 +147,7 @@ class TaskBase(BaseModel):
     notify_enabled: bool = False
     notify_before_min: int = Field(default=10, ge=0, le=10_080)
     label_id: int | None = None
+    note_id: int | None = None  # 紐付くノート (任意)
 
 
 class TaskCreate(TaskBase):
@@ -164,12 +165,42 @@ class TaskUpdate(BaseModel):
     notify_enabled: bool | None = None
     notify_before_min: int | None = Field(default=None, ge=0, le=10_080)
     label_id: int | None = None
+    note_id: int | None = None
 
 
 class TaskOut(TaskBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     label: LabelOut | None = None
+
+
+# ---- Note (プロジェクトに紐づく Markdown ノート) ----
+class NoteBase(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(default="", max_length=100_000)
+    content_type: Literal["md", "text"] = "md"
+    label_id: int | None = None
+
+
+class NoteCreate(NoteBase):
+    pass
+
+
+class NoteUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, max_length=100_000)
+    content_type: Literal["md", "text"] | None = None
+    label_id: int | None = None
+
+
+class NoteOut(NoteBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    label: LabelOut | None = None
+    created_at: datetime
+    updated_at: datetime
+    # 紐づくタスク件数 (一覧表示用。ルーターで集計して埋める)
+    task_count: int = 0
 
 
 # ---- Webhook (通知の送信先) ----

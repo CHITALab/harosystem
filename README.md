@@ -18,6 +18,7 @@
 - **Markdown サポート**: 本文に Markdown を使用可能。タスク内のチェックボックスはサイドバーにサブタスクとして表示・操作可能（▸/▾ で折りたたみ/展開）
 - **ラベル (プロジェクト)**: 色・デフォルト通知設定付きのカテゴリ分類
 - **個別カラー**: イベント / タスクごとに 22 色のパレットから色をオーバーライド可能
+- **ノート (Markdown)**: プロジェクト（ラベル）に紐づく Markdown ノートを `/notes` で管理。1 つのノートに複数タスクを紐付けでき（Note 1:N Task）、調査メモや継続作業を横断的に集約できる
 
 ### テーマ
 - ライト / ダーク / システム依存の外観モード
@@ -117,6 +118,7 @@ GET /api/health → {"status": "ok"}
 | ラベル | `/api/labels`, `/api/labels/{id}` | GET, POST, PUT, DELETE |
 | イベント | `/api/events`, `/api/events/{id}` | GET, POST, PUT, DELETE |
 | タスク | `/api/tasks`, `/api/tasks/{id}` | GET, POST, PUT, DELETE |
+| ノート | `/api/notes`, `/api/notes/{id}` | GET, POST, PUT, DELETE |
 | フィード | `/api/feeds`, `/api/feeds/{id}`, `/api/feeds/{id}/sync` | GET, POST, PUT, DELETE |
 | フィードイベント | `/api/feeds/events` | GET |
 | Webhook | `/api/webhooks`, `/api/webhooks/{id}`, `/api/webhooks/{id}/test` | GET, POST, PUT, DELETE |
@@ -147,10 +149,13 @@ erDiagram
     User ||--o{ Label : "has many"
     User ||--o{ Event : "has many"
     User ||--o{ Task : "has many"
+    User ||--o{ Note : "has many"
     User ||--o{ Feed : "has many"
     User ||--o{ Webhook : "has many"
     Label ||--o{ Event : "has many"
     Label ||--o{ Task : "has many"
+    Label ||--o{ Note : "has many"
+    Note ||--o{ Task : "has many"
     Feed ||--o{ FeedEvent : "has many"
 
     User {

@@ -72,6 +72,17 @@ import { UiModalComponent } from '../ui/modal.component';
             <input type="checkbox" [(ngModel)]="done" /> 完了
           </label>
         </div>
+        <!-- ノート紐付け (タスクのみ。ノートが 1 件以上あるときだけ表示) -->
+        @if (store.notes().length) {
+          <ui-form-field label="ノート">
+            <select class="input" [(ngModel)]="noteId">
+              <option [ngValue]="null">— なし —</option>
+              @for (note of store.notes(); track note.id) {
+                <option [ngValue]="note.id">{{ note.title }}</option>
+              }
+            </select>
+          </ui-form-field>
+        }
       }
 
       <div class="flex gap-3">
@@ -171,6 +182,7 @@ export class ItemFormComponent implements OnInit {
   duration: number | null = null;
   done = false;
   labelId: number | null = null;
+  noteId: number | null = null; // タスクのみ: 紐付くノート
   useColor = false;
   color = '#00f0ff';
   notifyEnabled = false;
@@ -204,6 +216,7 @@ export class ItemFormComponent implements OnInit {
         this.dueAt = task.due_at ? toLocalInput(new Date(task.due_at)) : '';
         this.duration = task.duration_min;
         this.done = task.done;
+        this.noteId = task.note_id;
       }
     } else {
       // 新規: ダブルクリック位置 (prefillStart) か既定時刻を初期値にする
@@ -292,6 +305,7 @@ export class ItemFormComponent implements OnInit {
         duration_min: this.duration ? Number(this.duration) : null,
         done: this.done,
         label_id: this.labelId,
+        note_id: this.noteId,
         color: this.useColor ? this.color : null,
         notify_enabled: this.notifyEnabled,
         notify_before_min: this.notifyBeforeMin,

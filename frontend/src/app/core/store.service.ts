@@ -27,6 +27,7 @@ import {
   FeedEvent,
   FormState,
   Label,
+  Note,
   Selected,
   TaskItem,
   ViewMode,
@@ -48,6 +49,8 @@ export class StoreService {
   readonly labels = signal<Label[]>([]);
   readonly events = signal<EventItem[]>([]);
   readonly tasks = signal<TaskItem[]>([]);
+  /** ノート一覧 (ノートページ表示・タスクフォームのノート選択で共有) */
+  readonly notes = signal<Note[]>([]);
   /** ラベル絞り込み (null = すべて) */
   readonly filterLabelId = signal<number | null>(null);
   /** 詳細パネルに表示中のアイテム (null = パネル非表示) */
@@ -154,6 +157,16 @@ export class StoreService {
         return of([] as Label[]);
       }),
     ).subscribe((l) => this.labels.set(l));
+  }
+
+  /** ノート一覧を取得して signal に反映する */
+  loadNotes(): void {
+    this.api.getNotes().pipe(
+      catchError(() => {
+        this.toast.error('ノートの取得に失敗しました');
+        return of([] as Note[]);
+      }),
+    ).subscribe((n) => this.notes.set(n));
   }
 
   /** フィード一覧を取得して signal に反映する */

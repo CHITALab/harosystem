@@ -65,6 +65,31 @@ export class TaskApiService {
   }
 
   /**
+   * 指定ノートに紐付くタスクを取得します（期間によらず全件）。
+   *
+   * ノート編集画面で「関連タスク」を表示するために使います。
+   *
+   * @param noteId - 紐付くノートのID
+   * @returns タスクの配列を返すObservable
+   */
+  getTasksByNote(noteId: number): Observable<TaskItem[]> {
+    const params = new HttpParams().set('note_id', noteId);
+    return this.http.get<TaskItem[]>(`${BASE}/tasks`, { params });
+  }
+
+  /**
+   * 全タスクを取得します（期間フィルタなし）。
+   *
+   * ノート編集画面で「紐付けるタスクを選ぶ」候補一覧として使います。
+   * バックエンドは start/end を省略すると全タスクを返します。
+   *
+   * @returns 全タスクの配列を返すObservable
+   */
+  getAllTasks(): Observable<TaskItem[]> {
+    return this.http.get<TaskItem[]>(`${BASE}/tasks`);
+  }
+
+  /**
    * 新しいタスクを作成します。
    *
    * @param data - 作成するタスクの情報

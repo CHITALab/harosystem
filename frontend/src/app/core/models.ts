@@ -48,6 +48,22 @@ export interface TaskItem {
   notify_before_min: number;
   label_id: number | null;
   label?: Label | null;
+  /** 紐付くノートの ID (null = 紐付けなし) */
+  note_id: number | null;
+}
+
+/** プロジェクト (Label) に紐づく Markdown ノート */
+export interface Note {
+  id: number;
+  title: string;
+  content: string;
+  content_type: 'md' | 'text';
+  label_id: number | null;
+  label?: Label | null; // GET 時にサーバーが結合して返す
+  created_at: string; // ISO8601
+  updated_at: string; // ISO8601
+  /** 紐づくタスク件数 (一覧表示用) */
+  task_count: number;
 }
 
 /** 外部カレンダー購読 (ICS URL)。バックエンドが定期同期する */

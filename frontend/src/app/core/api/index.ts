@@ -21,7 +21,7 @@
  */
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { EventItem, Feed, FeedEvent, Label, TaskItem, Webhook } from '../models';
+import { EventItem, Feed, FeedEvent, Label, Note, TaskItem, Webhook } from '../models';
 
 /* ── 個別サービスの再エクスポート ── */
 export { LabelApiService } from './label-api.service';
@@ -31,6 +31,7 @@ export { FeedApiService } from './feed-api.service';
 export { WebhookApiService } from './webhook-api.service';
 export { IcsApiService } from './ics-api.service';
 export { AuthApiService } from './auth-api.service';
+export { NoteApiService } from './note-api.service';
 export { ICS_EXPORT_URL } from './api-base';
 
 /* ── 個別サービスのインポート（ファサード内部で使用） ── */
@@ -40,6 +41,7 @@ import { TaskApiService } from './task-api.service';
 import { FeedApiService } from './feed-api.service';
 import { WebhookApiService } from './webhook-api.service';
 import { IcsApiService } from './ics-api.service';
+import { NoteApiService } from './note-api.service';
 
 /**
  * APIサービスファサード（後方互換性用）。
@@ -72,6 +74,14 @@ export class ApiService {
   private feedApi = inject(FeedApiService);
   private webhookApi = inject(WebhookApiService);
   private icsApi = inject(IcsApiService);
+  private noteApi = inject(NoteApiService);
+
+  // ---- ノート ----
+
+  /** @see NoteApiService.getNotes */
+  getNotes(labelId?: number | null): Observable<Note[]> {
+    return this.noteApi.getNotes(labelId);
+  }
 
   // ---- ラベル ----
 

@@ -15,6 +15,7 @@ def list_tasks(
     start: datetime | None = Query(None),
     end: datetime | None = Query(None),
     label_id: int | None = Query(None),
+    note_id: int | None = Query(None),
     include_no_due: bool = Query(True),
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -24,6 +25,13 @@ def list_tasks(
         .options(joinedload(models.Task.label))
         .filter(models.Task.user_id == user.id)
     )
+    # note_id 指定時はノート編集画面用に「紐付くタスク」を期間に関係なく返す
+    if note_id is not None:
+        return (
+            q.filter(models.Task.note_id == note_id)
+            .order_by(models.Task.done, models.Task.due_at.nulls_last())
+            .all()
+        )
     if start and end:
         cond = (models.Task.due_at >= start) & (models.Task.due_at < end)
         if include_no_due:
