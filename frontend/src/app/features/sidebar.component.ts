@@ -133,7 +133,7 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
       </div>
       @for (task of store.tasks(); track task.id) {
         <div
-          class="flex items-baseline gap-2 px-2 py-2 cursor-pointer text-sm border-l-2
+          class="flex items-center gap-2 px-2 py-2 cursor-pointer text-sm border-l-2
                  hover:bg-cyber-cyan/5"
           [class.opacity-45]="task.done"
           [class.line-through]="task.done"
@@ -143,12 +143,15 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
           <!-- サブタスクがある場合のみ開閉キャレット (なければ幅を揃える空白) -->
           @if (subtasks(task).length) {
             <button
-              class="shrink-0 w-3 text-center leading-none text-cyber-dim hover:text-cyber-cyan"
-              [title]="isCollapsed(task.id) ? 'サブタスクを展開' : 'サブタスクを折りたたみ'"
-              (click)="toggleCollapse(task.id, $event)"
-            >{{ isCollapsed(task.id) ? '▸' : '▾' }}</button>
+              type="button"
+              class="shrink-0 w-6 h-6 -my-1 flex items-center justify-center
+                     text-cyber-dim hover:text-cyber-cyan hover:bg-cyber-cyan/10"
+              [attr.aria-expanded]="isExpanded(task.id)"
+              [title]="isExpanded(task.id) ? 'サブタスクを折りたたむ' : 'サブタスクを展開'"
+              (click)="toggleExpand(task.id, $event)"
+            >{{ isExpanded(task.id) ? '▾' : '▸' }}</button>
           } @else {
-            <span class="shrink-0 w-3"></span>
+            <span class="shrink-0 w-6"></span>
           }
           <input type="checkbox" [checked]="task.done" (click)="toggleDone(task, $event)" />
           <span class="flex-1 truncate">{{ task.title }}</span>
@@ -158,8 +161,8 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
             </span>
           }
         </div>
-        <!-- md 内のチェックボックスをサブタスクとして表示 (折りたたみ中は隠す / クリックで反転) -->
-        @if (!isCollapsed(task.id)) {
+        <!-- md 内のチェックボックスをサブタスクとして表示 (展開時のみ / クリックで反転) -->
+        @if (isExpanded(task.id)) {
           @for (sub of subtasks(task); track $index) {
             <label
               class="flex items-baseline gap-2 pl-7 pr-2 py-1 cursor-pointer text-xs
@@ -202,20 +205,20 @@ export class SidebarComponent {
     this.router.navigateByUrl('/login');
   }
 
-  /** サブタスクを折りたたみ中の親タスク ID 集合 (既定は全展開) */
-  private readonly collapsedTasks = signal<Set<number>>(new Set());
+  /** サブタスクを展開中の親タスク ID 集合 (既定は全て折りたたみ = 空集合) */
+  private readonly expandedTasks = signal<Set<number>>(new Set());
 
-  /** 指定タスクのサブタスクが折りたたまれているか */
-  isCollapsed(taskId: number): boolean {
-    return this.collapsedTasks().has(taskId);
+  /** 指定タスクのサブタスクが展開されているか */
+  isExpanded(taskId: number): boolean {
+    return this.expandedTasks().has(taskId);
   }
 
   /** 親タスクのサブタスク表示を開閉する (行クリックの詳細表示は発火させない) */
-  toggleCollapse(taskId: number, ev: MouseEvent): void {
+  toggleExpand(taskId: number, ev: MouseEvent): void {
     ev.stopPropagation();
-    const next = new Set(this.collapsedTasks());
+    const next = new Set(this.expandedTasks());
     next.has(taskId) ? next.delete(taskId) : next.add(taskId);
-    this.collapsedTasks.set(next);
+    this.expandedTasks.set(next);
   }
 
   newName = '';
