@@ -143,6 +143,7 @@ class TaskBase(BaseModel):
     due_at: datetime | None = None
     duration_min: int | None = Field(default=None, ge=1, le=1440)
     done: bool = False
+    status: Literal["todo", "in_progress", "done"] = "todo"  # カンバンのステータス
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     notify_enabled: bool = False
     notify_before_min: int = Field(default=10, ge=0, le=10_080)
@@ -161,6 +162,7 @@ class TaskUpdate(BaseModel):
     due_at: datetime | None = None
     duration_min: int | None = Field(default=None, ge=1, le=1440)
     done: bool | None = None
+    status: Literal["todo", "in_progress", "done"] | None = None
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     notify_enabled: bool | None = None
     notify_before_min: int | None = Field(default=None, ge=0, le=10_080)

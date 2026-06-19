@@ -122,6 +122,9 @@ class Task(Base):
     )
     duration_min: Mapped[int | None] = mapped_column(nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # カンバンのステータス (todo | in_progress | done)。done と相互同期する
+    # (done == True ⇔ status == "done")。詳細は routers/tasks.py を参照
+    status: Mapped[str] = mapped_column(String(20), default="todo")
     # タイル個別の色 (未設定ならラベル色 → 既定色の順でフォールバック)
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # 通知: 期限 notify_before_min 分前に 1 回通知する

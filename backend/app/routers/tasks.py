@@ -61,6 +61,11 @@ def create_task(
     db: Session = Depends(get_db),
 ):
     task = models.Task(**payload.model_dump(), user_id=user.id)
+    # done と status の整合を取る (done=True を優先して done 状態に寄せる)
+    if task.done:
+        task.status = "done"
+    elif task.status == "done":
+        task.done = True
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -80,6 +85,13 @@ def update_task(
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
         setattr(task, key, value)
+    # done <-> status を同期する。明示的に渡された方を優先:
+    #   - カンバンの D&D は status を送る → done を追従させる
+    #   - チェックボックスは done を送る → status を todo/done に追従させる
+    if "status" in data:
+        task.done = task.status == "done"
+    elif "done" in data:
+        task.status = "done" if task.done else "todo"
     # 期限や通知設定が変わったら「通知済み」をリセットして再通知の対象に戻す
     if {"due_at", "notify_enabled", "notify_before_min"} & data.keys():
         task.notified_at = None

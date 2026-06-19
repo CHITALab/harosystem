@@ -41,6 +41,8 @@ export interface TaskItem {
   due_at: string | null; // 期限 (null = 期限なし)
   duration_min: number | null; // 作業時間 (分)。タイムグリッドでの高さになる
   done: boolean;
+  /** カンバンのステータス。done と相互同期する (done ⇔ status==='done') */
+  status: 'todo' | 'in_progress' | 'done';
   /** タイル個別の色 (null ならラベル色 → 既定色の順でフォールバック) */
   color: string | null;
   /** 通知 ON/OFF と通知タイミング (期限の何分前か) */

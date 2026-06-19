@@ -36,6 +36,10 @@ with engine.begin() as conn:
         "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS last_error VARCHAR(500)",
         # ノート機能 (2026-06 追加): タスクからノートへの紐付け
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS note_id INTEGER",
+        # カンバン機能 (2026-06 追加): タスクのステータス (todo|in_progress|done)
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'todo'",
+        # 既存タスクの done から status をバックフィル (done=True のものを done に)
+        "UPDATE tasks SET status = 'done' WHERE done = TRUE AND status = 'todo'",
         # ラベル既定の通知設定 (2026-06 追加)
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_before_min_default INTEGER NOT NULL DEFAULT 10",
