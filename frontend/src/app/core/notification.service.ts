@@ -46,9 +46,9 @@ export class NotificationService implements OnDestroy {
       this.fire(`event-${ev.id}-${ev.start_at}`, at, now, `📅 ${ev.title}`, 'まもなく開始します');
     }
     for (const t of this.store.tasks()) {
-      if (!t.notify_enabled || t.done || !t.due_at) continue;
-      const at = new Date(t.due_at).getTime() - t.notify_before_min * 60_000;
-      this.fire(`task-${t.id}-${t.due_at}`, at, now, `✅ ${t.title}`, 'まもなく期限です');
+      if (!t.notify_enabled || t.done || !t.start_at) continue;
+      const at = new Date(t.start_at).getTime() - t.notify_before_min * 60_000;
+      this.fire(`task-${t.id}-${t.start_at}`, at, now, `✅ ${t.title}`, 'まもなく開始します');
     }
   }
 

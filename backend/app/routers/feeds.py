@@ -92,6 +92,7 @@ def sync_feed(db: Session, feed: models.Feed) -> int:
     db.query(models.FeedEvent).filter(models.FeedEvent.feed_id == feed.id).delete()
     for d in event_dicts:
         d.pop("content_type", None)  # FeedEvent には無いカラム
+        d.pop("recurrence", None)  # FeedEvent には無いカラム (取り込まない)
         db.add(models.FeedEvent(feed_id=feed.id, **d))
     feed.last_synced_at = datetime.now(timezone.utc)
     feed.last_error = None

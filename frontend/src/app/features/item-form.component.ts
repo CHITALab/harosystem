@@ -14,6 +14,14 @@ import { SettingsService } from '../core/settings.service';
 import { StoreService } from '../core/store.service';
 import { EventItem, TaskItem } from '../core/models';
 import { addDays, toLocalInput } from '../core/util';
+import {
+  RecurInput,
+  WEEKDAY_CODES,
+  WEEKDAY_LABELS,
+  buildRRule,
+  emptyRecur,
+  parseRRule,
+} from '../core/recurrence';
 import { UiButtonComponent } from '../ui/button.component';
 import { UiColorPaletteComponent } from '../ui/color-palette.component';
 import { UiFormFieldComponent } from '../ui/form-field.component';
@@ -58,20 +66,67 @@ import { UiModalComponent } from '../ui/modal.component';
         <label class="flex items-center gap-2 text-sm cursor-pointer select-none w-fit">
           <input type="checkbox" [(ngModel)]="allDay" /> 終日
         </label>
+
+        <!-- 繰り返し (RRULE プリセット) -->
+        <div class="flex flex-col gap-2">
+          <ui-form-field label="繰り返し">
+            <select class="input" [(ngModel)]="recur.freq">
+              <option value="none">なし</option>
+              <option value="daily">毎日</option>
+              <option value="weekday">平日のみ (月〜金)</option>
+              <option value="weekly">毎週 (曜日指定)</option>
+              <option value="monthly">毎月</option>
+            </select>
+          </ui-form-field>
+
+          @if (recur.freq === 'weekly') {
+            <div class="flex gap-1 flex-wrap">
+              @for (code of weekdayCodes; track code) {
+                <button type="button" class="text-xs px-2 py-1 border"
+                  [class.border-cyber-cyan]="recur.days.includes(code)"
+                  [class.text-cyber-cyan]="recur.days.includes(code)"
+                  [class.border-cyber-line]="!recur.days.includes(code)"
+                  (click)="toggleDay(code)">{{ weekdayLabels[code] }}</button>
+              }
+            </div>
+          }
+
+          @if (recur.freq !== 'none') {
+            <div class="flex gap-3 items-end flex-wrap">
+              <ui-form-field label="終了">
+                <select class="input" [(ngModel)]="recur.end">
+                  <option value="never">なし (無期限)</option>
+                  <option value="count">回数</option>
+                  <option value="until">期日</option>
+                </select>
+              </ui-form-field>
+              @if (recur.end === 'count') {
+                <ui-form-field label="回数">
+                  <input type="number" class="input" min="1" max="365" [(ngModel)]="recur.count" />
+                </ui-form-field>
+              }
+              @if (recur.end === 'until') {
+                <ui-form-field label="終了日">
+                  <input type="date" class="input" [(ngModel)]="recur.until" />
+                </ui-form-field>
+              }
+            </div>
+          }
+        </div>
       } @else {
         <div class="flex gap-3 items-end">
-          <ui-form-field label="期限">
-            <input type="datetime-local" class="input" [(ngModel)]="dueAt" />
+          <ui-form-field label="開始">
+            <input type="datetime-local" class="input" [(ngModel)]="startAt" />
           </ui-form-field>
-          <ui-form-field label="作業時間 (分)">
-            <input type="number" class="input" min="0" step="15"
-                   [(ngModel)]="duration" placeholder="例: 60" />
+          <ui-form-field label="終了">
+            <input type="datetime-local" class="input" [(ngModel)]="endAt" />
           </ui-form-field>
           <label class="flex items-center gap-2 text-sm cursor-pointer select-none pb-2.5
                         whitespace-nowrap">
             <input type="checkbox" [(ngModel)]="done" /> 完了
           </label>
         </div>
+        <p class="text-xs text-cyber-dim -mt-1">開始/終了を空にするとバックログ（未スケジュール）になります</p>
         <!-- ノート紐付け (タスクのみ。ノートが 1 件以上あるときだけ表示) -->
         @if (store.notes().length) {
           <ui-form-field label="ノート">
@@ -120,7 +175,7 @@ import { UiModalComponent } from '../ui/modal.component';
       <div class="flex gap-5 items-center flex-wrap">
         <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
           <input type="checkbox" [(ngModel)]="notifyEnabled" />
-          通知する ({{ kind === 'event' ? '開始' : '期限' }}前)
+          通知する (開始前)
         </label>
         @if (notifyEnabled) {
           <select class="input !w-auto" [(ngModel)]="notifyBeforeMin">
@@ -178,9 +233,11 @@ export class ItemFormComponent implements OnInit {
   startAt = '';
   endAt = '';
   allDay = false;
-  dueAt = '';
-  duration: number | null = null;
   done = false;
+  // 繰り返し (予定のみ)
+  recur: RecurInput = emptyRecur();
+  readonly weekdayCodes = WEEKDAY_CODES;
+  readonly weekdayLabels = WEEKDAY_LABELS;
   labelId: number | null = null;
   noteId: number | null = null; // タスクのみ: 紐付くノート
   useColor = false;
@@ -211,10 +268,25 @@ export class ItemFormComponent implements OnInit {
         this.startAt = toLocalInput(new Date(ev.start_at));
         this.endAt = toLocalInput(new Date(ev.end_at));
         this.allDay = ev.all_day;
+        this.recur = parseRRule(ev.recurrence);
+        // 繰り返し予定は一覧で展開された「各回」なので、編集はマスターに対して行う。
+        // マスターの開始/終了を取り直して再アンカー (過去回の消失) を防ぐ。
+        if (ev.recurrence) {
+          this.api.getEvent(ev.id).pipe(
+            catchError(() => {
+              this.toast.error('繰り返し予定の読み込みに失敗しました');
+              return EMPTY;
+            }),
+          ).subscribe((master) => {
+            this.startAt = toLocalInput(new Date(master.start_at));
+            this.endAt = toLocalInput(new Date(master.end_at));
+            this.recur = parseRRule(master.recurrence);
+          });
+        }
       } else {
         const task = state.item as TaskItem;
-        this.dueAt = task.due_at ? toLocalInput(new Date(task.due_at)) : '';
-        this.duration = task.duration_min;
+        this.startAt = task.start_at ? toLocalInput(new Date(task.start_at)) : '';
+        this.endAt = task.end_at ? toLocalInput(new Date(task.end_at)) : '';
         this.done = task.done;
         this.noteId = task.note_id;
       }
@@ -225,7 +297,6 @@ export class ItemFormComponent implements OnInit {
       const end = new Date(base);
       end.setHours(end.getHours() + 1);
       this.endAt = toLocalInput(end);
-      this.dueAt = toLocalInput(base);
       // 通知の初期値: ラベル既定 > ユーザー設定 (新規時はラベル未選択なのでユーザー設定)
       this.applyNotifyDefaults();
     }
@@ -248,6 +319,13 @@ export class ItemFormComponent implements OnInit {
       this.notifyEnabled = s.notifyDefault;
       this.notifyBeforeMin = s.notifyBeforeMin;
     }
+  }
+
+  /** 毎週の曜日選択をトグルする */
+  toggleDay(code: string): void {
+    this.recur.days = this.recur.days.includes(code)
+      ? this.recur.days.filter((d) => d !== code)
+      : [...this.recur.days, code];
   }
 
   /** 既定の開始時刻: 表示中の日の「現在時刻 + 1時間 (0分)」 */
@@ -283,6 +361,8 @@ export class ItemFormComponent implements OnInit {
         color: this.useColor ? this.color : null,
         notify_enabled: this.notifyEnabled,
         notify_before_min: this.notifyBeforeMin,
+        // 繰り返しルール (マスター開始日の曜日を毎週の既定に使う)
+        recurrence: buildRRule(this.recur, start.getDay()),
       };
       const req = this.isEdit
         ? this.api.updateEvent(this.editId!, payload)
@@ -297,12 +377,31 @@ export class ItemFormComponent implements OnInit {
         this.store.afterMutation({ kind: 'event', item });
       });
     } else {
+      // 開始/終了は「両方入力 (スケジュール)」か「両方空 (未スケジュール=バックログ)」のいずれか
+      const hasStart = !!this.startAt;
+      const hasEnd = !!this.endAt;
+      if (hasStart !== hasEnd) {
+        this.toast.error('開始と終了は両方入力するか、両方空にしてください');
+        return;
+      }
+      let startIso: string | null = null;
+      let endIso: string | null = null;
+      if (hasStart && hasEnd) {
+        const s = new Date(this.startAt);
+        const e = new Date(this.endAt);
+        if (e <= s) {
+          this.toast.error('終了は開始より後にしてください');
+          return;
+        }
+        startIso = s.toISOString();
+        endIso = e.toISOString();
+      }
       const payload: Partial<TaskItem> = {
         title: this.title.trim(),
         content: this.content,
         content_type: this.contentType,
-        due_at: this.dueAt ? new Date(this.dueAt).toISOString() : null,
-        duration_min: this.duration ? Number(this.duration) : null,
+        start_at: startIso,
+        end_at: endIso,
         done: this.done,
         label_id: this.labelId,
         note_id: this.noteId,

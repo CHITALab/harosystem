@@ -30,6 +30,8 @@ export interface EventItem {
   notify_before_min: number;
   label_id: number | null;
   label?: Label | null; // GET 時にサーバーが結合して返す
+  /** 繰り返しルール (RRULE 文字列, null=単発)。一覧の各回はマスターの id を共有する仮想インスタンス */
+  recurrence: string | null;
 }
 
 /** TODO タスク */
@@ -38,11 +40,15 @@ export interface TaskItem {
   title: string;
   content: string;
   content_type: 'md' | 'text';
-  due_at: string | null; // 期限 (null = 期限なし)
-  duration_min: number | null; // 作業時間 (分)。タイムグリッドでの高さになる
+  // 予定と同じく開始/終了時刻で管理 (null/null = 未スケジュール = バックログ)
+  start_at: string | null; // ISO8601
+  end_at: string | null; // ISO8601
   done: boolean;
-  /** カンバンのステータス。done と相互同期する (done ⇔ status==='done') */
-  status: 'todo' | 'in_progress' | 'done';
+  /** カンバンのステータス。done と相互同期する (done ⇔ status==='done')。
+   *  backlog = 期限/着手未定のプール */
+  status: 'backlog' | 'todo' | 'in_progress' | 'done';
+  /** 所属スプリントの ID (null = バックログプール) */
+  sprint_id: number | null;
   /** タイル個別の色 (null ならラベル色 → 既定色の順でフォールバック) */
   color: string | null;
   /** 通知 ON/OFF と通知タイミング (期限の何分前か) */
@@ -66,6 +72,17 @@ export interface Note {
   updated_at: string; // ISO8601
   /** 紐づくタスク件数 (一覧表示用) */
   task_count: number;
+}
+
+/** スプリント (実行期間)。タスクをまとめて計画・進行する単位 */
+export interface Sprint {
+  id: number;
+  name: string;
+  /** planned (未開始) | active (進行中) | completed (完了) */
+  state: 'planned' | 'active' | 'completed';
+  start_date: string | null; // ISO8601
+  end_date: string | null; // ISO8601
+  created_at: string; // ISO8601
 }
 
 /** 外部カレンダー購読 (ICS URL)。バックエンドが定期同期する */

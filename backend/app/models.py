@@ -60,6 +60,9 @@ class Event(Base):
     label_id: Mapped[int | None] = mapped_column(
         ForeignKey("labels.id", ondelete="SET NULL"), nullable=True
     )
+    # 繰り返しルール (RRULE 文字列, 例 "FREQ=WEEKLY;BYDAY=MO")。null=単発。
+    # 一覧取得時に表示期間へ展開する (マスターのみ保存し、各回は仮想インスタンス)
+    recurrence: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     label: Mapped[Label | None] = relationship(back_populates="events")
 
@@ -117,13 +120,18 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="")
     content_type: Mapped[str] = mapped_column(String(10), default="md")  # md | text
-    due_at: Mapped[datetime | None] = mapped_column(
+    # 予定 (Event) と同じく開始/終了時刻で管理する (null/null = 未スケジュール=バックログ)。
+    # 旧 due_at / duration_min は廃止 (DB カラムはレガシーとして残置・未使用)。
+    start_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    duration_min: Mapped[int | None] = mapped_column(nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     done: Mapped[bool] = mapped_column(Boolean, default=False)
-    # カンバンのステータス (todo | in_progress | done)。done と相互同期する
-    # (done == True ⇔ status == "done")。詳細は routers/tasks.py を参照
+    # カンバンのステータス (backlog | todo | in_progress | done)。done と相互同期する
+    # (done == True ⇔ status == "done")。backlog = 期限/着手未定のプール。
+    # 詳細は routers/tasks.py を参照
     status: Mapped[str] = mapped_column(String(20), default="todo")
     # タイル個別の色 (未設定ならラベル色 → 既定色の順でフォールバック)
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -140,9 +148,43 @@ class Task(Base):
     note_id: Mapped[int | None] = mapped_column(
         ForeignKey("notes.id", ondelete="SET NULL"), nullable=True
     )
+    # 所属スプリント (null = バックログプール)。スプリント削除時は SET NULL でプールへ戻る
+    sprint_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True
+    )
 
     label: Mapped[Label | None] = relationship(back_populates="tasks")
     note: Mapped["Note | None"] = relationship(back_populates="tasks")
+    sprint: Mapped["Sprint | None"] = relationship(back_populates="tasks")
+
+
+class Sprint(Base):
+    """スプリント (実行期間)。タスクをまとめて計画・進行するための単位。
+
+    Jira 風のバックログ/スプリント管理で使う。同時に active なスプリントは 1 つ。
+    バックログ (sprint_id IS NULL) からタスクをスプリントへ割り当てて計画する。
+    """
+
+    __tablename__ = "sprints"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # planned (未開始) | active (進行中) | completed (完了)
+    state: Mapped[str] = mapped_column(String(20), default="planned")
+    start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    tasks: Mapped[list["Task"]] = relationship(back_populates="sprint")
 
 
 class Note(Base):

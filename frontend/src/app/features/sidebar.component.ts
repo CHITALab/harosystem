@@ -155,9 +155,9 @@ import { UiColorPaletteComponent } from '../ui/color-palette.component';
           }
           <input type="checkbox" [checked]="task.done" (click)="toggleDone(task, $event)" />
           <span class="flex-1 truncate">{{ task.title }}</span>
-          @if (task.due_at) {
+          @if (task.start_at) {
             <span class="text-xs text-cyber-dim whitespace-nowrap ml-auto">
-              {{ fmtDue(task.due_at) }}
+              {{ fmtDue(task.start_at) }}
             </span>
           }
         </div>

@@ -68,14 +68,14 @@ def _due_items(db: Session, now: datetime) -> list[tuple[object, str]]:
             models.Task.notify_enabled,
             models.Task.notified_at.is_(None),
             models.Task.done.is_(False),
-            models.Task.due_at.isnot(None),
+            models.Task.start_at.isnot(None),
         )
         .all()
     )
     for t in tasks:
-        at = t.due_at - timedelta(minutes=t.notify_before_min)
+        at = t.start_at - timedelta(minutes=t.notify_before_min)
         if at <= now < at + STALE_AFTER:
-            items.append((t, f"✅ タスクリマインド: 「{t.title}」 期限 {_fmt(t.due_at)}"))
+            items.append((t, f"✅ タスクリマインド: 「{t.title}」 {_fmt(t.start_at)} 開始"))
 
     return items
 

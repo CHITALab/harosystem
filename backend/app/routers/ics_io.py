@@ -59,6 +59,11 @@ async def import_ics(
 
     for d in event_dicts:
         d.pop("uid", None)  # Event モデルには uid カラムが無い
+        # 取り込んだ RRULE も API と同じ検証を通す (未対応頻度などは単発に落とす)
+        try:
+            d["recurrence"] = schemas._validate_rrule(d.get("recurrence"))
+        except ValueError:
+            d["recurrence"] = None
         db.add(models.Event(**d, user_id=user.id))
     for d in task_dicts:
         db.add(models.Task(**d, user_id=user.id))

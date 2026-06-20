@@ -6,7 +6,7 @@ DB に依存しない純粋関数のみを置く (テストしやすさのため
 
 ICS の主な対応マッピング:
   VEVENT  <-> Event (SUMMARY=title, DESCRIPTION=content, DTSTART/DTEND)
-  VTODO   <-> Task  (DUE=due_at, STATUS:COMPLETED=done, DURATION=duration_min)
+  VTODO   <-> Task  (DTSTART=start_at, DUE=end_at, STATUS:COMPLETED=done)
   日付のみの DTSTART (DATE 型) は終日予定として扱う。
 """
 
@@ -14,6 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from icalendar import Calendar, Event as IcsEvent, Todo as IcsTodo
+from icalendar.prop import vRecur
 
 PRODID = "-//harosystem//harosystem//JA"
 
@@ -52,6 +53,12 @@ def build_ics(events: list, tasks: list) -> bytes:
         else:
             ve.add("dtstart", ev.start_at)
             ve.add("dtend", ev.end_at)
+        # 繰り返し予定は RRULE を付与する (マスターのみ。各回は展開しない)
+        if getattr(ev, "recurrence", None):
+            try:
+                ve.add("rrule", vRecur.from_ical(ev.recurrence))
+            except (ValueError, TypeError):
+                pass
         cal.add_component(ve)
 
     for task in tasks:
@@ -60,10 +67,11 @@ def build_ics(events: list, tasks: list) -> bytes:
         vt.add("summary", task.title)
         if task.content:
             vt.add("description", task.content)
-        if task.due_at:
-            vt.add("due", task.due_at)
-        if task.duration_min:
-            vt.add("duration", timedelta(minutes=task.duration_min))
+        # 開始/終了時刻 → DTSTART / DUE (未スケジュールなら出力しない)
+        if task.start_at:
+            vt.add("dtstart", task.start_at)
+        if task.end_at:
+            vt.add("due", task.end_at)
         vt.add("status", "COMPLETED" if task.done else "NEEDS-ACTION")
         cal.add_component(vt)
 
@@ -116,6 +124,10 @@ def _parse_vevent(comp) -> dict | None:
         # 終了情報なし: 終日は翌日まで、それ以外は 1 時間
         end = start + (timedelta(days=1) if all_day else timedelta(hours=1))
 
+    # 繰り返し: RRULE を文字列化して取り込む (例 "FREQ=WEEKLY;BYDAY=MO")
+    rrule = comp.get("rrule")
+    recurrence = rrule.to_ical().decode() if rrule is not None else None
+
     return {
         "uid": str(comp.get("uid", "")),
         "title": str(comp.get("summary", "(no title)")),
@@ -124,17 +136,28 @@ def _parse_vevent(comp) -> dict | None:
         "start_at": start,
         "end_at": max(end, start),
         "all_day": all_day,
+        "recurrence": recurrence,
     }
 
 
 def _parse_vtodo(comp) -> dict | None:
+    dtstart = comp.get("dtstart")
     due = comp.get("due")
     duration = comp.get("duration")
+    start = _to_utc(dtstart.dt) if dtstart is not None else None
+    end = _to_utc(due.dt) if due is not None else None
+    # DTSTART が無く DUE のみなら DUE を開始に充てる
+    if start is None and end is not None:
+        start = end
+    # 終了が無ければ DURATION (無ければ 30 分) で補完する
+    if start is not None and end is None:
+        mins = int(duration.dt.total_seconds() // 60) if duration is not None else 30
+        end = start + timedelta(minutes=mins)
     return {
         "title": str(comp.get("summary", "(no title)")),
         "content": str(comp.get("description", "")),
         "content_type": "text",
-        "due_at": _to_utc(due.dt) if due is not None else None,
-        "duration_min": int(duration.dt.total_seconds() // 60) if duration is not None else None,
+        "start_at": start,
+        "end_at": end,
         "done": str(comp.get("status", "")) == "COMPLETED",
     }

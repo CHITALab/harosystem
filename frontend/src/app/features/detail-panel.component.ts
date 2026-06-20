@@ -13,6 +13,7 @@ import { MarkdownPipe } from '../core/markdown.pipe';
 import { StoreService } from '../core/store.service';
 import { EventItem, Selected, TaskItem } from '../core/models';
 import { fmtDateTime, toggleNthCheckbox } from '../core/util';
+import { humanizeRRule } from '../core/recurrence';
 import { UiBadgeComponent } from '../ui/badge.component';
 import { UiButtonComponent } from '../ui/button.component';
 
@@ -56,10 +57,15 @@ import { UiButtonComponent } from '../ui/button.component';
             @if (event.all_day) { <span>終日</span> }
             <span>開始: {{ fmt(event.start_at) }}</span>
             <span>終了: {{ fmt(event.end_at) }}</span>
+            @if (event.recurrence) {
+              <span class="text-cyber-cyan">↻ {{ humanize(event.recurrence) }}</span>
+            }
           } @else {
-            <span>期限: {{ task.due_at ? fmt(task.due_at) : 'なし' }}</span>
-            @if (task.duration_min) {
-              <span>作業時間: {{ fmtDuration(task.duration_min) }}</span>
+            @if (task.start_at && task.end_at) {
+              <span>開始: {{ fmt(task.start_at) }}</span>
+              <span>終了: {{ fmt(task.end_at) }}</span>
+            } @else {
+              <span>未スケジュール (バックログ)</span>
             }
           }
           @if (selected.item.label; as label) {
@@ -109,10 +115,9 @@ export class DetailPanelComponent {
     return fmtDateTime(new Date(iso));
   }
 
-  fmtDuration(min: number): string {
-    const h = Math.floor(min / 60);
-    const m = min % 60;
-    return h ? (m ? `${h}時間${m}分` : `${h}時間`) : `${m}分`;
+  /** RRULE を日本語表記にする (繰り返し表示用) */
+  humanize(rule: string): string {
+    return humanizeRRule(rule);
   }
 
   /**

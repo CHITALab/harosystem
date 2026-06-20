@@ -86,8 +86,14 @@ import { UiButtonComponent } from '../ui/button.component';
           routerLink="/board"
           class="font-head text-sm tracking-wider text-cyber-dim hover:text-cyber-cyan p-1
                  hover:drop-shadow-[0_0_8px_rgb(var(--c-cyan)/0.8)] transition-all"
-          title="カンバンボード"
+          title="アクティブボード"
         >BOARD</a>
+        <a
+          routerLink="/backlog"
+          class="font-head text-sm tracking-wider text-cyber-dim hover:text-cyber-cyan p-1
+                 hover:drop-shadow-[0_0_8px_rgb(var(--c-cyan)/0.8)] transition-all"
+          title="バックログ / スプリント計画"
+        >BACKLOG</a>
 
         <!-- 設定 (歯車) -->
         @if (settings.settings().userName; as name) {

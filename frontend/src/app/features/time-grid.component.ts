@@ -221,8 +221,10 @@ const FEED_CHIP =
                   (dblclick)="chipDblClick('event', seg.ev, $event)"
                 >
                   <span class="text-[11px] text-cyber-dim">{{ timeRange(seg.ev) }}</span><br />
-                  {{ seg.ev.title }}
-                  <div class="resize-handle" (pointerdown)="resizeStart($event, 'event', seg.ev, di)"></div>
+                  @if (seg.ev.recurrence) { <span title="繰り返し">↻</span> }{{ seg.ev.title }}
+                  @if (!seg.ev.recurrence) {
+                    <div class="resize-handle" (pointerdown)="resizeStart($event, 'event', seg.ev, di)"></div>
+                  }
                 </div>
               }
 
@@ -313,13 +315,17 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
       const dayEvents = events.filter(
         (e) => !e.all_day && new Date(e.start_at) < next && new Date(e.end_at) > date,
       );
+      // スケジュール済み (start/end あり) かつこの日に重なるタスク
+      const dayTasks = tasks.filter(
+        (t) => t.start_at && t.end_at && new Date(t.start_at) < next && new Date(t.end_at) > date,
+      );
+      // 予定とタスクを 1 つのカスケードに統合配置する (重なりを一緒にずらして回避)
+      const laid = this.layoutDay(dayEvents, dayTasks, date, next);
       result.push({
         date,
         today: sameDay(date, today),
-        events: this.layout(dayEvents, date, next),
-        tasks: this.layoutTasks(
-          tasks.filter((t) => t.due_at && sameDay(new Date(t.due_at), date)),
-        ),
+        events: laid.events,
+        tasks: laid.tasks,
         feedEvents: feedEvents
           .filter(
             (f) => !f.all_day && new Date(f.start_at) < next && new Date(f.end_at) > date,
@@ -388,49 +394,43 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  /** 予定をこの日の範囲にクリップし、重なりをカスケード配置する */
-  private layout(dayEvents: EventItem[], dayStart: Date, dayEnd: Date): EventSeg[] {
-    const items = dayEvents.map((ev) => {
-      // 日をまたぐ予定はこの日の範囲にクリップする
-      const s = Math.max(new Date(ev.start_at).getTime(), dayStart.getTime());
-      const e = Math.min(new Date(ev.end_at).getTime(), dayEnd.getTime());
+  /**
+   * 予定とタスクをこの日の範囲にクリップし、両者をまとめて 1 つのカスケードに配置する。
+   * 同じ時間帯に予定とタスクが重なっても、別々ではなく一緒に右へずれて被りを回避する (要件③)。
+   */
+  private layoutDay(
+    dayEvents: EventItem[],
+    dayTasks: TaskItem[],
+    dayStart: Date,
+    dayEnd: Date,
+  ): { events: EventSeg[]; tasks: TaskSeg[] } {
+    // 日をまたぐ場合はこの日の範囲にクリップして top/height を算出する
+    const clip = (startIso: string, endIso: string) => {
+      const s = Math.max(new Date(startIso).getTime(), dayStart.getTime());
+      const e = Math.min(new Date(endIso).getTime(), dayEnd.getTime());
       return {
-        ev,
         top: ((s - dayStart.getTime()) / 60000) * PX_PER_MIN,
         height: Math.max(((e - s) / 60000) * PX_PER_MIN, 24),
       };
-    });
-    return this.cascade(items).map((s) => ({
-      ev: s.ev,
-      top: s.top,
-      height: s.height,
-      left: `calc(${s.leftPct}% + 2px)`,
-      width: `calc(${100 - s.leftPct}% - 5px)`,
-      zIndex: 10 + s.col, // 右の列ほど手前に
-    }));
-  }
+    };
+    const items = [
+      ...dayEvents.map((ev) => ({ ...clip(ev.start_at, ev.end_at), ev })),
+      ...dayTasks.map((t) => ({ ...clip(t.start_at!, t.end_at!), task: t })),
+    ];
 
-  /**
-   * タスクを期限時刻の位置に作業時間ぶんの高さで並べ、重なりをカスケード配置する。
-   * 予定と同じ cascade ロジックを使い、複数タスクが重なっても被らず読めるようにする。
-   */
-  private layoutTasks(dayTasks: TaskItem[]): TaskSeg[] {
-    const items = dayTasks.map((t) => {
-      const d = new Date(t.due_at!);
-      return {
-        task: t,
-        top: (d.getHours() * 60 + d.getMinutes()) * PX_PER_MIN,
-        height: Math.max(26, (t.duration_min ?? 0) * PX_PER_MIN),
-      };
-    });
-    return this.cascade(items).map((s) => ({
-      task: s.task,
-      top: s.top,
-      height: s.height,
-      left: `calc(${s.leftPct}% + 2px)`,
-      width: `calc(${100 - s.leftPct}% - 5px)`,
-      zIndex: 20 + s.col, // 予定 (10+) より手前に積む
-    }));
+    const eventsOut: EventSeg[] = [];
+    const tasksOut: TaskSeg[] = [];
+    for (const s of this.cascade(items)) {
+      const left = `calc(${s.leftPct}% + 2px)`;
+      const width = `calc(${100 - s.leftPct}% - 5px)`;
+      const zIndex = 10 + s.col; // 右の列ほど手前に
+      if ('ev' in s && s.ev) {
+        eventsOut.push({ ev: s.ev, top: s.top, height: s.height, left, width, zIndex });
+      } else if ('task' in s && s.task) {
+        tasksOut.push({ task: s.task, top: s.top, height: s.height, left, width, zIndex });
+      }
+    }
+    return { events: eventsOut, tasks: tasksOut };
   }
 
   /** チップの表示色: 個別色 > ラベル色 > 既定色 (テーマで明度補正) */
@@ -456,6 +456,9 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
 
   dragStart(e: PointerEvent, kind: 'event' | 'task', item: EventItem | TaskItem, dayIndex: number): void {
     if (e.button !== 0) return;
+    // 繰り返し予定は各回が仮想インスタンス。D&D 移動はマスター再アンカーで過去回が
+    // 消えるなど直感的でないため無効化する (編集はフォームから = 全件に適用)。
+    if (kind === 'event' && (item as EventItem).recurrence) return;
     e.preventDefault(); // ブラウザ既定のテキスト選択/ドラッグを抑止
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId); // 以降の pointer イベントをこの要素で受ける
@@ -480,14 +483,14 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
     el: HTMLElement,
     e: PointerEvent,
   ): DragState {
-    const origStart =
-      kind === 'event'
-        ? new Date((item as EventItem).start_at)
-        : new Date((item as TaskItem).due_at!);
-    const origEnd = kind === 'event' ? new Date((item as EventItem).end_at) : null;
-    const durMin = origEnd
-      ? (origEnd.getTime() - origStart.getTime()) / 60_000
-      : ((item as TaskItem).duration_min ?? Math.round(26 / PX_PER_MIN));
+    // 予定・タスクとも start_at / end_at を持つので同じ扱いにできる
+    const origStart = new Date(
+      kind === 'event' ? (item as EventItem).start_at : (item as TaskItem).start_at!,
+    );
+    const origEnd = new Date(
+      kind === 'event' ? (item as EventItem).end_at : (item as TaskItem).end_at!,
+    );
+    const durMin = (origEnd.getTime() - origStart.getTime()) / 60_000;
     return {
       mode, kind, id: item.id, el,
       startX: e.clientX, startY: e.clientY,
@@ -559,16 +562,16 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
       // 見た目はカーソル追従なので、確定/キャンセルいずれもスナップ後の高さに戻す
       d.el.style.height = `${Math.max(d.origHeight + d.dyMin * PX_PER_MIN, 16)}px`;
       if (d.dyMin === 0) return;
+      // リサイズは終了時刻を伸縮 (予定・タスク共通)
+      const end = new Date(d.origEnd!.getTime() + d.dyMin * 60_000);
       if (d.kind === 'event') {
-        const end = new Date(d.origEnd!.getTime() + d.dyMin * 60_000);
         this.api
           .updateEvent(d.id, { end_at: end.toISOString() })
           .pipe(catchError(() => { this.toast.error('リサイズに失敗しました'); return EMPTY; }))
           .subscribe((item) => this.store.syncSelected('event', item));
       } else {
-        const duration = Math.max(SNAP_MIN, Math.round(d.durMin + d.dyMin));
         this.api
-          .updateTask(d.id, { duration_min: duration })
+          .updateTask(d.id, { end_at: end.toISOString() })
           .pipe(catchError(() => { this.toast.error('リサイズに失敗しました'); return EMPTY; }))
           .subscribe((item) => this.store.syncSelected('task', item));
       }
@@ -578,17 +581,17 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
     const deltaMs = d.dxDays * 86_400_000 + d.dyMin * 60_000;
     if (deltaMs === 0) return;
 
+    // 移動は開始・終了を同量シフト (予定・タスク共通)
+    const start = new Date(d.origStart.getTime() + deltaMs);
+    const end = new Date(d.origEnd!.getTime() + deltaMs);
     if (d.kind === 'event') {
-      const start = new Date(d.origStart.getTime() + deltaMs);
-      const end = new Date(d.origEnd!.getTime() + deltaMs);
       this.api
         .updateEvent(d.id, { start_at: start.toISOString(), end_at: end.toISOString() })
         .pipe(catchError(() => { this.toast.error('移動に失敗しました'); return EMPTY; }))
         .subscribe((item) => this.store.syncSelected('event', item));
     } else {
-      const due = new Date(d.origStart.getTime() + deltaMs);
       this.api
-        .updateTask(d.id, { due_at: due.toISOString() })
+        .updateTask(d.id, { start_at: start.toISOString(), end_at: end.toISOString() })
         .pipe(catchError(() => { this.toast.error('移動に失敗しました'); return EMPTY; }))
         .subscribe((item) => this.store.syncSelected('task', item));
     }

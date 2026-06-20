@@ -13,13 +13,16 @@
 - 現在時刻インジケーター・終日イベント対応
 
 ### イベント & タスク
-- **イベント**: 日時指定のカレンダーエントリ
-- **タスク**: 期限日・所要時間付きの TODO アイテム
+- **イベント**: 日時指定のカレンダーエントリ（終日対応・繰り返し(RRULE)対応：毎日/平日/毎週(曜日)/毎月 + 終了条件）
+- **タスク**: 開始時刻・終了時刻を持つ TODO アイテム（予定と同じ時間モデル。時刻未設定ならバックログのプールに入る）
 - **Markdown サポート**: 本文に Markdown を使用可能。タスク内のチェックボックスはサイドバーにサブタスクとして表示・操作可能（▸/▾ で折りたたみ/展開）
 - **ラベル (プロジェクト)**: 色・デフォルト通知設定付きのカテゴリ分類
 - **個別カラー**: イベント / タスクごとに 22 色のパレットから色をオーバーライド可能
 - **ノート (Markdown)**: プロジェクト（ラベル）に紐づく Markdown ノートを `/notes` で管理。1 つのノートに複数タスクを紐付けでき（Note 1:N Task）、調査メモや継続作業を横断的に集約できる
-- **カンバンボード**: `/board` でタスクを Todo / In Progress / Done の 3 列管理。ドラッグ＆ドロップでステータス変更（`done` と相互同期）、ラベル / ノートで絞り込み可能
+- **アジャイルボード (Jira 風)**: スプリント（実行期間）でタスクを計画・進行管理
+  - **バックログ `/backlog`**: スプリントと Backlog プールの縦リスト。ドラッグ＆ドロップでタスクをスプリントへ割り当てて計画。スプリントの作成・開始・完了・削除
+  - **アクティブボード `/board`**: 進行中スプリントのタスクを Todo / In Progress / Done の 3 列で管理。D&D でステータス変更（`done` と相互同期）、空白ダブルクリックでインライン作成
+  - 期限・スプリント未定で作成したタスクは自動的に Backlog プールへ
 
 ### テーマ
 - ライト / ダーク / システム依存の外観モード
@@ -151,12 +154,14 @@ erDiagram
     User ||--o{ Event : "has many"
     User ||--o{ Task : "has many"
     User ||--o{ Note : "has many"
+    User ||--o{ Sprint : "has many"
     User ||--o{ Feed : "has many"
     User ||--o{ Webhook : "has many"
     Label ||--o{ Event : "has many"
     Label ||--o{ Task : "has many"
     Label ||--o{ Note : "has many"
     Note ||--o{ Task : "has many"
+    Sprint ||--o{ Task : "has many"
     Feed ||--o{ FeedEvent : "has many"
 
     User {
@@ -184,20 +189,24 @@ erDiagram
         int notify_before_min
         datetime notified_at
         int label_id FK
+        string recurrence
     }
     Task {
         int id PK
         string title
         text content
         string content_type
-        datetime due_at
-        int duration_min
+        datetime start_at
+        datetime end_at
         bool done
+        string status
         string color
         bool notify_enabled
         int notify_before_min
         datetime notified_at
         int label_id FK
+        int note_id FK
+        int sprint_id FK
     }
     Feed {
         int id PK

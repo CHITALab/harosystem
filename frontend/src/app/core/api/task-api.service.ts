@@ -2,11 +2,11 @@
  * @file task-api.service.ts
  * @description TODOタスク（TaskItem）に関するAPI通信を担当するサービス。
  *
- * タスクは期限（due_at）を持つTODOアイテムです。
- * 期限なしのタスクも存在し、取得時には `include_no_due=true` で一緒に取得します。
+ * タスクは開始/終了時刻（start_at/end_at）を持つTODOアイテムです（予定と同じ時間モデル）。
+ * 時刻未設定（未スケジュール）のタスクも存在し、取得時には `include_no_due=true` で一緒に取得します。
  *
  * ## 提供するメソッド
- * - `getTasks(start, end, labelId)` — 期間内のタスク＋期限なしタスクを取得
+ * - `getTasks(start, end, labelId)` — 期間に重なるタスク＋未スケジュールのタスクを取得
  * - `createTask(data)` — 新しいタスクを作成
  * - `updateTask(id, data)` — タスクを部分更新（完了状態の切り替えなど）
  * - `deleteTask(id)` — タスクを削除

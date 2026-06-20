@@ -311,8 +311,8 @@ Webhook (独立)
 | テーブル | 主なカラム |
 |---------|-----------|
 | labels | name (unique), color |
-| events | title, content, content_type(md/text), start_at, end_at, all_day, **color**, **notify_enabled / notify_before_min / notified_at**, label_id |
-| tasks | title, content, content_type, due_at, duration_min, done, color, notify_*, label_id |
+| events | title, content, content_type(md/text), start_at, end_at, all_day, **color**, **notify_enabled / notify_before_min / notified_at**, label_id, **recurrence(RRULE)** |
+| tasks | title, content, content_type, start_at, end_at, done, status, color, notify_*, label_id, note_id, sprint_id |
 | feeds | name, url, color, enabled, last_synced_at, **last_error** |
 | feed_events | feed_id, uid, title, start_at, end_at, all_day (読み取り専用キャッシュ) |
 | webhooks | name, kind(discord/slack), url, enabled |
@@ -335,7 +335,7 @@ Webhook (独立)
 | CORS | `http://localhost:4200` / `http://127.0.0.1:4200` のみ許可 |
 | SSRF | フィード URL は http/https のみ (`webcal://` は https に変換) |
 | Webhook URL | **https 必須** (Pydantic バリデータで強制) |
-| 入力検証 | 色 `^#[0-9a-fA-F]{6}$`、content ≤ 100,000 字、notify_before_min 0〜10,080、duration_min 1〜1,440 |
+| 入力検証 | 色 `^#[0-9a-fA-F]{6}$`、content ≤ 100,000 字、notify_before_min 0〜10,080、タスク start_at/end_at は両方指定 or 両方 null |
 | リソース上限 | ICS アップロード/フィード取得 10MB、フィード 20s・Webhook 10s タイムアウト |
 | TLS | 1.2/1.3 のみ。HTTP は 301 で HTTPS へ |
 

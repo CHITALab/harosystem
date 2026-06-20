@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import get_current_user
 from ..database import get_db
+from ..recurrence import expand_occurrences
 
 router = APIRouter()
 
@@ -23,13 +24,35 @@ def list_events(
         .options(joinedload(models.Event.label))
         .filter(models.Event.user_id == user.id)
     )
-    if start:
-        q = q.filter(models.Event.end_at >= start)
-    if end:
-        q = q.filter(models.Event.start_at < end)
     if label_id:
         q = q.filter(models.Event.label_id == label_id)
-    return q.order_by(models.Event.start_at).all()
+
+    # 単発予定: 期間に重なるものだけを抽出する
+    singles = q.filter(models.Event.recurrence.is_(None))
+    if start:
+        singles = singles.filter(models.Event.end_at >= start)
+    if end:
+        singles = singles.filter(models.Event.start_at < end)
+    result = [
+        schemas.EventOut.model_validate(e)
+        for e in singles.order_by(models.Event.start_at).all()
+    ]
+
+    # 繰り返し予定: マスターを全件取得し、表示期間へ展開する (各回は仮想インスタンス)。
+    # 期間 (start/end) が無ければマスターをそのまま返す。
+    masters = q.filter(models.Event.recurrence.isnot(None)).all()
+    if start and end:
+        for m in masters:
+            base = schemas.EventOut.model_validate(m)
+            for occ_start, occ_end in expand_occurrences(
+                m.recurrence, m.start_at, m.end_at, start, end
+            ):
+                result.append(base.model_copy(update={"start_at": occ_start, "end_at": occ_end}))
+    else:
+        result.extend(schemas.EventOut.model_validate(m) for m in masters)
+
+    result.sort(key=lambda e: e.start_at)
+    return result
 
 
 @router.get("/{event_id}", response_model=schemas.EventOut)

@@ -67,6 +67,19 @@ export class EventApiService {
   }
 
   /**
+   * 単一のイベント (マスター) を取得します。
+   *
+   * 繰り返し予定の編集時、一覧で展開された仮想インスタンスではなく
+   * マスターの開始/終了・ルールを得るために使います。
+   *
+   * @param id - イベントID
+   * @returns マスターイベントを返すObservable
+   */
+  getEvent(id: number): Observable<EventItem> {
+    return this.http.get<EventItem>(`${BASE}/events/${id}`);
+  }
+
+  /**
    * 新しいイベントを作成します。
    *
    * @param data - 作成するイベントの情報

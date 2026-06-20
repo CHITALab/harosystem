@@ -32,6 +32,7 @@ export { WebhookApiService } from './webhook-api.service';
 export { IcsApiService } from './ics-api.service';
 export { AuthApiService } from './auth-api.service';
 export { NoteApiService } from './note-api.service';
+export { SprintApiService } from './sprint-api.service';
 export { ICS_EXPORT_URL } from './api-base';
 
 /* ── 個別サービスのインポート（ファサード内部で使用） ── */
@@ -110,6 +111,11 @@ export class ApiService {
   /** @see EventApiService.getEvents */
   getEvents(start: Date, end: Date, labelId: number | null): Observable<EventItem[]> {
     return this.eventApi.getEvents(start, end, labelId);
+  }
+
+  /** @see EventApiService.getEvent */
+  getEvent(id: number): Observable<EventItem> {
+    return this.eventApi.getEvent(id);
   }
 
   /** @see EventApiService.createEvent */

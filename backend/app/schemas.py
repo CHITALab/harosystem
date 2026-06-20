@@ -43,6 +43,37 @@ class LabelOut(LabelBase):
     id: int
 
 
+# 許可する繰り返し頻度。SECONDLY/MINUTELY/HOURLY は短期間で膨大な回数に展開でき
+# DoS の温床になるため受け付けない (UI のプリセットもこの範囲)。
+_ALLOWED_FREQ = {"DAILY", "WEEKLY", "MONTHLY", "YEARLY"}
+
+
+def _validate_rrule(v: str | None) -> str | None:
+    """繰り返しルール (RRULE) の軽量バリデーション。空文字は None に正規化する。
+
+    FREQ を必須とし、許可頻度 (DAILY/WEEKLY/MONTHLY/YEARLY) のみ受け付ける。
+    """
+    if v is None:
+        return None
+    v = v.strip()
+    if not v:
+        return None
+    # "RRULE:FREQ=..." のようなプロパティ名プレフィックスが付いていれば除去する
+    if v.upper().startswith("RRULE:"):
+        v = v[len("RRULE:"):].strip()
+    freq = None
+    for part in v.upper().split(";"):
+        key, _, val = part.partition("=")
+        if key.strip() == "FREQ":
+            freq = val.strip()
+            break
+    if freq is None:
+        raise ValueError("繰り返しルールは FREQ= を含む必要があります")
+    if freq not in _ALLOWED_FREQ:
+        raise ValueError("対応していない繰り返し頻度です (DAILY/WEEKLY/MONTHLY/YEARLY のみ)")
+    return v
+
+
 # ---- Event ----
 class EventBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -55,6 +86,13 @@ class EventBase(BaseModel):
     notify_enabled: bool = False
     notify_before_min: int = Field(default=10, ge=0, le=10_080)  # 最長 1 週間前
     label_id: int | None = None
+    # 繰り返しルール (RRULE 文字列, null=単発)
+    recurrence: str | None = Field(default=None, max_length=500)
+
+    @field_validator("recurrence")
+    @classmethod
+    def check_recurrence(cls, v: str | None) -> str | None:
+        return _validate_rrule(v)
 
 
 class EventCreate(EventBase):
@@ -72,6 +110,12 @@ class EventUpdate(BaseModel):
     notify_enabled: bool | None = None
     notify_before_min: int | None = Field(default=None, ge=0, le=10_080)
     label_id: int | None = None
+    recurrence: str | None = Field(default=None, max_length=500)
+
+    @field_validator("recurrence")
+    @classmethod
+    def check_recurrence(cls, v: str | None) -> str | None:
+        return _validate_rrule(v)
 
 
 class EventOut(EventBase):
@@ -140,15 +184,18 @@ class TaskBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=100_000)
     content_type: Literal["md", "text"] = "md"
-    due_at: datetime | None = None
-    duration_min: int | None = Field(default=None, ge=1, le=1440)
+    # 開始/終了時刻 (null/null = 未スケジュール = バックログ)
+    start_at: datetime | None = None
+    end_at: datetime | None = None
     done: bool = False
-    status: Literal["todo", "in_progress", "done"] = "todo"  # カンバンのステータス
+    # カンバンのステータス (backlog = 開始/着手未定のプール)
+    status: Literal["backlog", "todo", "in_progress", "done"] = "todo"
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     notify_enabled: bool = False
     notify_before_min: int = Field(default=10, ge=0, le=10_080)
     label_id: int | None = None
     note_id: int | None = None  # 紐付くノート (任意)
+    sprint_id: int | None = None  # 所属スプリント (null = バックログプール)
 
 
 class TaskCreate(TaskBase):
@@ -159,15 +206,16 @@ class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=100_000)
     content_type: Literal["md", "text"] | None = None
-    due_at: datetime | None = None
-    duration_min: int | None = Field(default=None, ge=1, le=1440)
+    start_at: datetime | None = None
+    end_at: datetime | None = None
     done: bool | None = None
-    status: Literal["todo", "in_progress", "done"] | None = None
+    status: Literal["backlog", "todo", "in_progress", "done"] | None = None
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     notify_enabled: bool | None = None
     notify_before_min: int | None = Field(default=None, ge=0, le=10_080)
     label_id: int | None = None
     note_id: int | None = None
+    sprint_id: int | None = None
 
 
 class TaskOut(TaskBase):
@@ -203,6 +251,32 @@ class NoteOut(NoteBase):
     updated_at: datetime
     # 紐づくタスク件数 (一覧表示用。ルーターで集計して埋める)
     task_count: int = 0
+
+
+# ---- Sprint (スプリント = 実行期間) ----
+class SprintBase(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+
+
+class SprintCreate(SprintBase):
+    pass
+
+
+class SprintUpdate(BaseModel):
+    # state は start/complete エンドポイント経由でのみ変更する
+    # (PUT で直接 active 化すると同時 1 つの排他チェックをバイパスできてしまうため除外)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+
+
+class SprintOut(SprintBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    state: Literal["planned", "active", "completed"]
+    created_at: datetime
 
 
 # ---- Webhook (通知の送信先) ----

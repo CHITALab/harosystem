@@ -10,7 +10,7 @@ import bcrypt
 
 from . import models, notify  # noqa: F401  (register models)
 from .database import Base, engine, wait_for_db
-from .routers import auth, events, feeds, ics_io, labels, notes, tasks, webhooks
+from .routers import auth, events, feeds, ics_io, labels, notes, sprints, tasks, webhooks
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -29,6 +29,8 @@ with engine.begin() as conn:
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS notify_before_min INTEGER NOT NULL DEFAULT 10",
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ",
+        # 繰り返し予定 (2026-06 追加): RRULE 文字列 (null=単発)
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS recurrence VARCHAR(500)",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color VARCHAR(20)",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notify_enabled BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notify_before_min INTEGER NOT NULL DEFAULT 10",
@@ -40,6 +42,11 @@ with engine.begin() as conn:
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'todo'",
         # 既存タスクの done から status をバックフィル (done=True のものを done に)
         "UPDATE tasks SET status = 'done' WHERE done = TRUE AND status = 'todo'",
+        # スプリント機能 (2026-06 追加): タスクの所属スプリント (null = バックログプール)
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id INTEGER",
+        # タスクの時間モデル変更 (2026-06): due_at + duration_min → start_at + end_at
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_at TIMESTAMPTZ",
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS end_at TIMESTAMPTZ",
         # ラベル既定の通知設定 (2026-06 追加)
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE labels ADD COLUMN IF NOT EXISTS notify_before_min_default INTEGER NOT NULL DEFAULT 10",
@@ -108,6 +115,34 @@ with engine.begin() as conn:
         END $$;
     """))
 
+    # ⑤ tasks.sprint_id の FK 制約 (スプリント削除時は SET NULL でプールへ戻す)。
+    conn.execute(text("""
+        DO $$ BEGIN
+            ALTER TABLE tasks
+                ADD CONSTRAINT fk_tasks_sprint
+                FOREIGN KEY (sprint_id) REFERENCES sprints(id) ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """))
+
+    # ⑥ 旧 due_at/duration_min → start_at/end_at のバックフィル。
+    # 旧カラムが存在する既存 DB でのみ実行する (新規 DB は create_all で旧カラムを
+    # 作らないため、無条件 UPDATE だと "column due_at does not exist" で落ちる)。
+    conn.execute(text("""
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'tasks' AND column_name = 'due_at'
+            ) THEN
+                UPDATE tasks SET start_at = due_at
+                    WHERE start_at IS NULL AND due_at IS NOT NULL;
+                UPDATE tasks SET end_at = due_at
+                    + (COALESCE(duration_min, 30) * INTERVAL '1 minute')
+                    WHERE end_at IS NULL AND due_at IS NOT NULL;
+            END IF;
+        END $$;
+    """))
+
 
 async def _periodic(name: str, interval_sec: int, fn) -> None:
     """同期関数 fn を interval_sec ごとにスレッドで実行する汎用ループ"""
@@ -148,6 +183,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(sprints.router, prefix="/api/sprints", tags=["sprints"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"])

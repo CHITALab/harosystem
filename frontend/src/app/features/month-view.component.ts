@@ -75,7 +75,7 @@ const CHIP_FEED =
             @for (ev of cell.events.slice(0, 3); track ev.id) {
               <div
                 [class]="chipEvent"
-                draggable="true"
+                [draggable]="!ev.recurrence"
                 [style.border-left-color]="evColor(ev)"
                 [style.background]="tint(evColor(ev))"
                 (dragstart)="onDragStart($event, 'event', ev.id)"
@@ -85,7 +85,7 @@ const CHIP_FEED =
                 @if (!ev.all_day) {
                   <span class="text-[11.5px] text-cyber-cyan mr-0.5">{{ time(ev.start_at) }}</span>
                 }
-                {{ ev.title }}
+                @if (ev.recurrence) { <span title="繰り返し">↻</span> }{{ ev.title }}
               </div>
             }
 
@@ -167,7 +167,9 @@ export class MonthViewComponent {
         events: events.filter(
           (e) => new Date(e.start_at) < next && new Date(e.end_at) > date,
         ),
-        tasks: tasks.filter((t) => t.due_at && sameDay(new Date(t.due_at), date)),
+        tasks: tasks.filter(
+          (t) => t.start_at && t.end_at && new Date(t.start_at) < next && new Date(t.end_at) > date,
+        ),
         feedEvents: feedEvents.filter(
           (f) => new Date(f.start_at) < next && new Date(f.end_at) > date,
         ),
@@ -225,6 +227,11 @@ export class MonthViewComponent {
 
   // ---- D&D: 日をまたぐ移動 (時刻は維持) ----
   onDragStart(e: DragEvent, kind: 'event' | 'task', id: number): void {
+    // 繰り返し予定は D&D 移動を禁止 ([draggable] だけでなくここでも防御)
+    if (kind === 'event' && this.store.events().find((x) => x.id === id)?.recurrence) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer?.setData('text/plain', `${kind}:${id}`);
   }
 
@@ -249,12 +256,14 @@ export class MonthViewComponent {
         .subscribe((item) => this.store.syncSelected('event', item));
     } else {
       const task = this.store.tasks().find((x) => x.id === id);
-      if (!task?.due_at) return;
-      const deltaMs = date.getTime() - startOfDay(new Date(task.due_at)).getTime();
+      if (!task?.start_at || !task.end_at) return;
+      const deltaMs = date.getTime() - startOfDay(new Date(task.start_at)).getTime();
       if (deltaMs === 0) return;
+      // 開始・終了を同量シフト (日付だけ移動・時刻は維持)
       this.api
         .updateTask(id, {
-          due_at: new Date(new Date(task.due_at).getTime() + deltaMs).toISOString(),
+          start_at: new Date(new Date(task.start_at).getTime() + deltaMs).toISOString(),
+          end_at: new Date(new Date(task.end_at).getTime() + deltaMs).toISOString(),
         })
         .pipe(catchError(() => { this.toast.error('移動に失敗しました'); return EMPTY; }))
         .subscribe((item) => this.store.syncSelected('task', item));
