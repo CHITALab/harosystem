@@ -180,6 +180,11 @@ class Sprint(Base):
     end_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # 紐づくラベル (プロジェクト)。ラベル単位でスプリントを分離管理する (null=未分類)。
+    # ラベル削除時は SET NULL でスプリントは残る (未分類扱いになる)
+    label_id: Mapped[int | None] = mapped_column(
+        ForeignKey("labels.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

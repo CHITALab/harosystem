@@ -240,6 +240,9 @@ export class ItemFormComponent implements OnInit {
   readonly weekdayLabels = WEEKDAY_LABELS;
   labelId: number | null = null;
   noteId: number | null = null; // タスクのみ: 紐付くノート
+  // ボード/バックログからの新規作成で渡されるカンバン状態・スプリント (タスクのみ)
+  private prefillStatus?: 'backlog' | 'todo' | 'in_progress' | 'done';
+  private prefillSprintId: number | null = null;
   useColor = false;
   color = '#00f0ff';
   notifyEnabled = false;
@@ -291,12 +294,22 @@ export class ItemFormComponent implements OnInit {
         this.noteId = task.note_id;
       }
     } else {
-      // 新規: ダブルクリック位置 (prefillStart) か既定時刻を初期値にする
-      const base = state.prefillStart ?? this.defaultStart();
-      this.startAt = toLocalInput(base);
-      const end = new Date(base);
-      end.setHours(end.getHours() + 1);
-      this.endAt = toLocalInput(end);
+      // 新規。ボード/バックログからの作成はカンバン状態・スプリント・ラベルを引き継ぐ
+      this.prefillStatus = state.prefillStatus;
+      this.prefillSprintId = state.prefillSprintId ?? null;
+      if (state.prefillLabelId !== undefined) this.labelId = state.prefillLabelId;
+      if (state.prefillStatus) {
+        // ボード作成: 時刻は未設定 (未スケジュール) で開始する
+        this.startAt = '';
+        this.endAt = '';
+      } else {
+        // カレンダー作成: ダブルクリック位置 (prefillStart) か既定時刻を初期値にする
+        const base = state.prefillStart ?? this.defaultStart();
+        this.startAt = toLocalInput(base);
+        const end = new Date(base);
+        end.setHours(end.getHours() + 1);
+        this.endAt = toLocalInput(end);
+      }
       // 通知の初期値: ラベル既定 > ユーザー設定 (新規時はラベル未選択なのでユーザー設定)
       this.applyNotifyDefaults();
     }
@@ -409,6 +422,12 @@ export class ItemFormComponent implements OnInit {
         notify_enabled: this.notifyEnabled,
         notify_before_min: this.notifyBeforeMin,
       };
+      // ボード/バックログからの新規作成のみ status/sprint_id を明示送信する。
+      // (通常のカレンダー作成では未送信にして、時刻未定なら自動 backlog に任せる)
+      if (!this.isEdit && this.prefillStatus) {
+        payload.status = this.prefillStatus;
+        payload.sprint_id = this.prefillSprintId;
+      }
       const req = this.isEdit
         ? this.api.updateTask(this.editId!, payload)
         : this.api.createTask(payload);

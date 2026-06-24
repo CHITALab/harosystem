@@ -96,7 +96,7 @@ interface DragState {
 const EVENT_CHIP =
   'absolute overflow-hidden cursor-grab text-[13px] leading-[1.3] px-2 py-1 ' +
   'border border-cyber-cyan border-l-[3px] bg-cyber-bg3 ' +
-  'shadow-[0_0_8px_rgb(var(--c-cyan)/0.15)] hover:brightness-140 hover:z-30 ' +
+  'shadow-[0_0_8px_rgb(var(--c-cyan)/0.15)] hover:brightness-140 ' +
   'touch-none select-none';
 const TASK_CHIP =
   'absolute min-h-[26px] overflow-hidden cursor-grab text-[13px] px-2 py-0.5 ' +
@@ -211,6 +211,8 @@ const FEED_CHIP =
                   [style.left]="seg.left"
                   [style.width]="seg.width"
                   [style.z-index]="seg.zIndex"
+                  [style.outline]="isSelected('event', seg.ev.id) ? '2px solid rgb(var(--c-cyan))' : null"
+                  [style.outline-offset]="'-1px'"
                   [style.border-left-color]="evColor(seg.ev)"
                   [style.background]="tint(evColor(seg.ev))"
                   (pointerdown)="dragStart($event, 'event', seg.ev, di)"
@@ -241,6 +243,8 @@ const FEED_CHIP =
                   [style.left]="seg.left"
                   [style.width]="seg.width"
                   [style.z-index]="seg.zIndex"
+                  [style.outline]="isSelected('task', seg.task.id) ? '2px solid rgb(var(--c-cyan))' : null"
+                  [style.outline-offset]="'-1px'"
                   [style.border-left-color]="seg.task.done ? null : taskColor(seg.task)"
                   (pointerdown)="dragStart($event, 'task', seg.task, di)"
                   (pointermove)="dragMove($event)"
@@ -600,6 +604,12 @@ export class TimeGridComponent implements AfterViewInit, OnDestroy {
   chipClick(kind: 'event' | 'task', item: EventItem | TaskItem): void {
     if (this.suppressClick) return;
     this.store.select({ kind, item } as Selected);
+  }
+
+  /** 詳細パネルで選択中 (= クリック中) のチップか判定する (選択枠 outline の表示に使う) */
+  isSelected(kind: 'event' | 'task', id: number): boolean {
+    const sel = this.store.selected();
+    return !!sel && sel.kind === kind && sel.item.id === id;
   }
 
   /** チップのダブルクリックで編集フォームを開く (背面の「新規作成」は発火させない) */

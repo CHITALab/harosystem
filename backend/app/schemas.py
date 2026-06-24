@@ -258,6 +258,7 @@ class SprintBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     start_date: datetime | None = None
     end_date: datetime | None = None
+    label_id: int | None = None  # 紐づくラベル (プロジェクト)。null=未分類
 
 
 class SprintCreate(SprintBase):

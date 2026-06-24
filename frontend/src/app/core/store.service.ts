@@ -17,7 +17,7 @@
  *       -> pipe(forkJoin / map / catchError 等) でストリームを整形
  *         -> subscribe 内で signal.set() -> テンプレートが自動再描画
  */
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { forkJoin, of, EMPTY, catchError, tap } from 'rxjs';
 import { ApiService } from './api.service';
 import { ToastService } from './toast.service';
@@ -36,6 +36,8 @@ import { addDays, startOfDay, startOfWeek, utcDateToLocalIso, WEEKDAYS_JA } from
 
 /** 非表示フィード ID の localStorage キー (ブラウザごとの表示設定) */
 const HIDDEN_FEEDS_KEY = 'neon-cal-hidden-feeds';
+/** board/backlog で選択中のラベルを記憶する localStorage キー */
+const BOARD_LABEL_KEY = 'neon-cal-board-label';
 
 @Injectable({ providedIn: 'root' })
 export class StoreService {
@@ -57,12 +59,36 @@ export class StoreService {
   readonly selected = signal<Selected | null>(null);
   /** 作成/編集モーダルの状態 (null = モーダル非表示) */
   readonly form = signal<FormState | null>(null);
+  /**
+   * タスク変更の世代カウンタ。afterMutation/syncSelected で増加する。
+   * ボード/バックログ画面が独自に保持するタスク一覧を、共有の詳細パネル・
+   * 作成フォーム経由の変更に追従して再取得するためのトリガー。
+   */
+  readonly tasksVersion = signal(0);
   /** 外部カレンダー購読の一覧 */
   readonly feeds = signal<Feed[]>([]);
   /** 購読フィードから取り込まれた予定 (読み取り専用表示) */
   readonly feedEvents = signal<FeedEvent[]>([]);
   /** 非表示にしているフィードの ID (サイドバーのトグルで切替・localStorage 永続化) */
   readonly hiddenFeedIds = signal<ReadonlySet<number>>(this.loadHiddenFeeds());
+  /**
+   * board/backlog で選択中のラベル (null = 未分類)。両画面で共有し、画面遷移・リロードを
+   * またいで保持する (localStorage 永続化)。コンポーネントローカルに持つと遷移で失われるため。
+   */
+  readonly boardLabelId = signal<number | null>(this.loadBoardLabel());
+
+  constructor() {
+    // boardLabelId の変化を localStorage に書き戻す (リロード後も選択を保持)。
+    // Safari プライベートモード等で setItem が SecurityError を投げても effect を壊さない。
+    effect(() => {
+      const v = this.boardLabelId();
+      try {
+        localStorage.setItem(BOARD_LABEL_KEY, v === null ? 'null' : String(v));
+      } catch {
+        /* ストレージ不可の環境では永続化を諦める (動作には影響しない) */
+      }
+    });
+  }
 
   // ---- 派生状態 (computed signals) ----
 
@@ -225,6 +251,18 @@ export class StoreService {
     }
   }
 
+  /** 保存済みの board/backlog 選択ラベルを読む (なし/未分類/ストレージ不可 = null) */
+  private loadBoardLabel(): number | null {
+    try {
+      const raw = localStorage.getItem(BOARD_LABEL_KEY);
+      if (raw === null || raw === 'null') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** 同じラベルをもう一度クリックすると絞り込み解除 */
   setFilter(labelId: number | null): void {
     this.filterLabelId.set(this.filterLabelId() === labelId ? null : labelId);
@@ -250,6 +288,7 @@ export class StoreService {
    */
   afterMutation(updated?: Selected | null): void {
     if (updated !== undefined) this.selected.set(updated);
+    this.tasksVersion.update((v) => v + 1); // ボード/バックログに変更を通知
     this.reload();
   }
 
@@ -260,8 +299,9 @@ export class StoreService {
   syncSelected(kind: 'event' | 'task', item: EventItem | TaskItem): void {
     const sel = this.selected();
     if (sel && sel.kind === kind && sel.item.id === item.id) {
-      this.afterMutation({ kind, item } as Selected);
+      this.afterMutation({ kind, item } as Selected); // 内部で tasksVersion を更新
     } else {
+      this.tasksVersion.update((v) => v + 1);
       this.reload();
     }
   }

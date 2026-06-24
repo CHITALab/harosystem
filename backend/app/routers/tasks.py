@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import get_current_user
 from ..database import get_db
+from ..ownership import assert_label, assert_note, assert_sprint
 
 router = APIRouter()
 
@@ -20,6 +21,19 @@ def _validate_schedule(start: datetime | None, end: datetime | None) -> None:
         raise HTTPException(422, "開始と終了は両方指定するか、両方未設定にしてください")
     if start is not None and end is not None and end <= start:
         raise HTTPException(422, "終了は開始より後にしてください")
+
+
+def _align_label_to_sprint(db: Session, task: models.Task) -> None:
+    """タスクがスプリントに属する場合、タスクのラベルをスプリントのラベルに揃える。
+
+    「ラベル=プロジェクト」「スプリントはプロジェクトに属する」モデルを保つための不変条件。
+    これにより board/backlog の表示ラベルとタスクのラベルが常に一致する。
+    プール (sprint_id=null) のタスクは自分の label_id がプロジェクト帰属を表すので変更しない。
+    """
+    if task.sprint_id is not None:
+        sprint = db.get(models.Sprint, task.sprint_id)
+        if sprint is not None:
+            task.label_id = sprint.label_id
 
 
 @router.get("", response_model=list[schemas.TaskOut])
@@ -75,18 +89,20 @@ def create_task(
     db: Session = Depends(get_db),
 ):
     _validate_schedule(payload.start_at, payload.end_at)
+    # 参照先 (ラベル/ノート/スプリント) の所有権を確認 (IDOR 防止)
+    assert_label(db, user.id, payload.label_id)
+    assert_note(db, user.id, payload.note_id)
+    assert_sprint(db, user.id, payload.sprint_id)
     task = models.Task(**payload.model_dump(), user_id=user.id)
-    # 開始時刻未定 & スプリント未割当 & ステータス未指定 → バックログプールへ自動振り分け
-    if (
-        task.start_at is None
-        and task.sprint_id is None
-        and "status" not in payload.model_fields_set
-    ):
-        task.status = "backlog"
-    # done と status の整合を取る (done=True を優先して done 状態に寄せる)
+    # done を優先して done 状態に寄せる
     if task.done:
         task.status = "done"
+    # 未スケジュール & スプリント未割当 & 未完了 → backlog (明示 status も上書きして不変条件を保つ)
+    if task.start_at is None and task.sprint_id is None and task.status != "done":
+        task.status = "backlog"
     task.done = task.status == "done"
+    # スプリント所属ならラベルをスプリントに揃える (ラベル=プロジェクトの一貫性)
+    _align_label_to_sprint(db, task)
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -104,6 +120,13 @@ def update_task(
     if not task or task.user_id != user.id:
         raise HTTPException(404, "Task not found")
     data = payload.model_dump(exclude_unset=True)
+    # 参照先 (ラベル/ノート/スプリント) を変更する場合は所有権を確認 (IDOR 防止)
+    if "label_id" in data:
+        assert_label(db, user.id, data["label_id"])
+    if "note_id" in data:
+        assert_note(db, user.id, data["note_id"])
+    if "sprint_id" in data:
+        assert_sprint(db, user.id, data["sprint_id"])
     for key, value in data.items():
         setattr(task, key, value)
     # 反映後の最終状態で開始/終了の不変条件を検証 (リサイズで end_at のみ更新でも保証)
@@ -124,8 +147,15 @@ def update_task(
         task.done = task.status == "done"
     elif "done" in data:
         task.status = "done" if task.done else "todo"
+    # 未スケジュール & スプリント未割当 & 未完了 → backlog (作成時と同じ不変条件を更新でも保つ)。
+    # 例: 編集フォームで開始/終了を空にしたら自動的にバックログへ落ちる。
+    if task.start_at is None and task.sprint_id is None and task.status != "done":
+        task.status = "backlog"
     # 不変条件: done と status を最終的に一致させる (done ⇔ status=="done")
     task.done = task.status == "done"
+    # スプリント所属ならラベルをスプリントに揃える (ラベル=プロジェクトの一貫性)。
+    # スプリント割当 (sprint_id 変更) でも、スプリント所属タスクのラベル単独編集でも常に成立させる。
+    _align_label_to_sprint(db, task)
     # 開始時刻や通知設定が変わったら「通知済み」をリセットして再通知の対象に戻す
     if {"start_at", "notify_enabled", "notify_before_min"} & data.keys():
         task.notified_at = None

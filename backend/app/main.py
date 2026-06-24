@@ -44,6 +44,8 @@ with engine.begin() as conn:
         "UPDATE tasks SET status = 'done' WHERE done = TRUE AND status = 'todo'",
         # スプリント機能 (2026-06 追加): タスクの所属スプリント (null = バックログプール)
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id INTEGER",
+        # スプリントのラベル分離 (2026-06 追加): スプリントの所属ラベル (null = 未分類)
+        "ALTER TABLE sprints ADD COLUMN IF NOT EXISTS label_id INTEGER",
         # タスクの時間モデル変更 (2026-06): due_at + duration_min → start_at + end_at
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_at TIMESTAMPTZ",
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS end_at TIMESTAMPTZ",
@@ -123,6 +125,41 @@ with engine.begin() as conn:
                 FOREIGN KEY (sprint_id) REFERENCES sprints(id) ON DELETE SET NULL;
         EXCEPTION WHEN duplicate_object THEN NULL;
         END $$;
+    """))
+
+    # ⑦ sprints.label_id の FK 制約 (ラベル削除時は SET NULL で未分類になる)。
+    conn.execute(text("""
+        DO $$ BEGIN
+            ALTER TABLE sprints
+                ADD CONSTRAINT fk_sprints_label
+                FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """))
+
+    # ⑧ ラベル=プロジェクトの一貫性是正 (2026-06):
+    #   タスクのラベルとスプリントのラベルがズレている既存データを修正する。
+    #   (a) ラベル未設定スプリントを、所属タスクのラベルが一意に定まる場合だけ補完
+    conn.execute(text("""
+        UPDATE sprints s SET label_id = sub.lid
+        FROM (
+            SELECT sprint_id,
+                   MIN(label_id) AS lid,
+                   COUNT(DISTINCT label_id) AS kinds,
+                   COUNT(*) FILTER (WHERE label_id IS NULL) AS nulls
+            FROM tasks WHERE sprint_id IS NOT NULL GROUP BY sprint_id
+        ) sub
+        WHERE s.id = sub.sprint_id AND s.label_id IS NULL
+          AND sub.kinds = 1 AND sub.nulls = 0
+    """))
+    #   (b) スプリント所属タスクのラベルを、そのスプリントのラベルへ揃える
+    #       (ラベル付きスプリントのみ。未設定スプリントのタスクのラベルは保持してデータ消失を防ぐ)
+    conn.execute(text("""
+        UPDATE tasks t SET label_id = s.label_id
+        FROM sprints s
+        WHERE t.sprint_id = s.id
+          AND s.label_id IS NOT NULL
+          AND t.label_id IS DISTINCT FROM s.label_id
     """))
 
     # ⑥ 旧 due_at/duration_min → start_at/end_at のバックフィル。

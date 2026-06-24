@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import get_current_user
 from ..database import get_db
+from ..ownership import assert_label
 
 router = APIRouter()
 
@@ -69,6 +70,7 @@ def create_note(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    assert_label(db, user.id, payload.label_id)  # IDOR 防止
     note = models.Note(**payload.model_dump(), user_id=user.id)
     db.add(note)
     db.commit()
@@ -86,7 +88,10 @@ def update_note(
     note = db.get(models.Note, note_id)
     if not note or note.user_id != user.id:
         raise HTTPException(404, "指定されたノートが見つかりません")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "label_id" in data:
+        assert_label(db, user.id, data["label_id"])  # IDOR 防止
+    for key, value in data.items():
         setattr(note, key, value)
     db.commit()
     db.refresh(note)

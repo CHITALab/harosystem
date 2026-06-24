@@ -82,6 +82,8 @@ export interface Sprint {
   state: 'planned' | 'active' | 'completed';
   start_date: string | null; // ISO8601
   end_date: string | null; // ISO8601
+  /** 紐づくラベル (プロジェクト) の ID。null = 未分類 */
+  label_id: number | null;
   created_at: string; // ISO8601
 }
 
@@ -153,4 +155,10 @@ export interface FormState {
   item?: EventItem | TaskItem;
   /** 新規作成時に開始/期限へプリセットする日時 */
   prefillStart?: Date;
+  /** 新規タスク作成時のカンバン状態 (ボードの列からの作成で使う) */
+  prefillStatus?: 'backlog' | 'todo' | 'in_progress' | 'done';
+  /** 新規タスク作成時の所属スプリント (ボード/バックログからの作成で使う) */
+  prefillSprintId?: number | null;
+  /** 新規タスク作成時のラベル (ボード/バックログのラベル分離で使う) */
+  prefillLabelId?: number | null;
 }

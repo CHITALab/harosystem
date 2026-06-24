@@ -61,7 +61,10 @@ export class EventApiService {
   getEvents(start: Date, end: Date, labelId: number | null): Observable<EventItem[]> {
     let params = new HttpParams()
       .set('start', start.toISOString())
-      .set('end', end.toISOString());
+      .set('end', end.toISOString())
+      // 繰り返しの曜日 (BYDAY) をブラウザのローカル TZ で解釈してもらう。
+      // 時刻自体は UTC で送受信し、表示のみローカル。
+      .set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
     if (labelId != null) params = params.set('label_id', labelId);
     return this.http.get<EventItem[]>(`${BASE}/events`, { params });
   }

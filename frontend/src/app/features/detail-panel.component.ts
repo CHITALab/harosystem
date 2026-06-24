@@ -49,7 +49,9 @@ import { UiButtonComponent } from '../ui/button.component';
 
       <!-- 本文 -->
       <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0">
-        <div class="text-lg font-bold leading-snug">{{ selected.item.title }}</div>
+        <div class="text-lg font-bold leading-snug cursor-text"
+             title="ダブルクリックで編集"
+             (dblclick)="edit()">{{ selected.item.title }}</div>
 
         <!-- メタ情報 (日時/作業時間/ラベル) -->
         <div class="flex flex-col gap-1 text-sm text-cyber-dim">
@@ -73,8 +75,9 @@ import { UiButtonComponent } from '../ui/button.component';
           }
         </div>
 
-        <!-- 内容 (md はクリックでチェックボックス連動) -->
-        <div class="border-t border-cyber-line pt-3">
+        <!-- 内容 (md はクリックでチェックボックス連動 / テキストのダブルクリックで編集) -->
+        <div class="border-t border-cyber-line pt-3" title="ダブルクリックで編集"
+             (dblclick)="editFromContent($event)">
           @if (selected.item.content) {
             @if (selected.item.content_type === 'md') {
               <div class="md" [innerHTML]="selected.item.content | markdown"
@@ -178,6 +181,12 @@ export class DetailPanelComponent {
 
   edit(): void {
     this.store.openForm({ kind: this.selected.kind, item: this.selected.item });
+  }
+
+  /** 内容エリアのダブルクリックで編集へ (md チェックボックスの操作とは衝突させない) */
+  editFromContent(e: MouseEvent): void {
+    if ((e.target as HTMLElement).closest('input')) return;
+    this.edit();
   }
 
   remove(): void {

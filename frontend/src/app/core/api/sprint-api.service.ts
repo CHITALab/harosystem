@@ -14,7 +14,7 @@
  * - `completeSprint(id)` — スプリントを完了
  * - `deleteSprint(id)` — スプリントを削除 (所属タスクはプールへ戻る)
  */
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Sprint } from '../models';
@@ -24,9 +24,21 @@ import { BASE } from './api-base';
 export class SprintApiService {
   private http = inject(HttpClient);
 
-  /** スプリント一覧を取得します (作成順)。 */
-  getSprints(): Observable<Sprint[]> {
-    return this.http.get<Sprint[]>(`${BASE}/sprints`);
+  /**
+   * スプリント一覧を取得します (作成順)。
+   *
+   * ラベル単位の分離に対応:
+   *   - labelId 指定 … そのラベルのスプリント
+   *   - labelId=null … 「未分類」(label_id が NULL) のスプリント
+   *
+   * @param labelId 絞り込むラベルID (null=未分類)
+   */
+  getSprints(labelId: number | null): Observable<Sprint[]> {
+    const params =
+      labelId == null
+        ? new HttpParams().set('unlabeled', true)
+        : new HttpParams().set('label_id', labelId);
+    return this.http.get<Sprint[]>(`${BASE}/sprints`, { params });
   }
 
   /** 新しいスプリントを作成します。 */
