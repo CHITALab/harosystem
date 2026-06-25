@@ -249,9 +249,26 @@ erDiagram
 | `POSTGRES_PASSWORD` | PostgreSQL パスワード（**必ず変更すること**） |
 | `POSTGRES_DB` | データベース名 |
 | `JWT_SECRET_KEY` | JWTの署名に使用する秘密鍵（**必ず推測不可能な長いランダム文字列に変更すること**） |
+| `CORS_ORIGINS` | （任意）API の CORS 許可オリジン（カンマ区切り）。未設定なら `localhost:4200` のみ |
+| `CERT_HOSTS` | （任意）自己署名証明書の SAN に追加するホスト名/IP（カンマ区切り）。`localhost`/`127.0.0.1` は常に含む |
 
 バックエンドの `DATABASE_URL` は docker-compose.yml が上記から自動構築します。
-いずれも未設定の場合、起動時にエラーで停止します（フェイルファスト）。
+DB認証情報と `JWT_SECRET_KEY` は未設定の場合、起動時にエラーで停止します（フェイルファスト）。
+
+#### 外部アクセス（このマシン以外から開く）
+
+既定では `localhost` 向けです。LAN の別端末やドメインからアクセスするには `.env` に設定します：
+
+```bash
+# 例: LAN IP 192.168.1.10 とホスト名でアクセスする場合
+CERT_HOSTS=192.168.1.10,calendar.local
+# 別オリジンの SPA から API を叩くなら (任意)
+CORS_ORIGINS=http://localhost:4200,https://calendar.example.com
+```
+
+証明書は起動時に生成されるため、`CERT_HOSTS` 変更後は frontend を作り直します：
+`docker compose up -d --build --force-recreate frontend`
+（自己署名のため、ブラウザの「安全でない」警告自体は残ります。本番は正式な証明書を推奨）。
 
 ### フロントエンド設定（ブラウザ内、Settings ページ）
 

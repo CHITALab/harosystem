@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -208,11 +209,16 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="harosystem API", lifespan=lifespan)
 
 # 通常は nginx 経由の同一オリジンなので CORS は不要だが、
-# 開発時 (ng serve :4200 → :8000 直叩き) のためにローカルのみ許可する。
-# ワイルドカード許可はブラウザ起点の攻撃面を広げるため使わない。
+# 開発時 (ng serve :4200 → :8000 直叩き) や外部アクセス向けに許可オリジンを設定可能にする。
+# 環境変数 CORS_ORIGINS (カンマ区切り) で外部化。未設定なら従来どおりローカルのみ。
+# ワイルドカード許可はブラウザ起点の攻撃面を広げるため既定にしない。
+_default_origins = "http://localhost:4200,http://127.0.0.1:4200"
+cors_origins = [
+    o.strip() for o in os.environ.get("CORS_ORIGINS", _default_origins).split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -42,6 +42,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?}
+      # CORS 許可オリジン (カンマ区切り)。未設定なら localhost のみ。外部アクセス時に設定。
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://127.0.0.1:4200}
     depends_on:
       db:
         condition: service_healthy
@@ -51,6 +53,10 @@ services:
   # HTTPS (自己署名証明書) に対応。
   frontend:
     build: ./frontend
+    environment:
+      # 自己署名証明書の SAN に追加するホスト名/IP (カンマ区切り)。
+      # 外部アクセス時にサーバーのホスト名やIPを設定する (localhost/127.0.0.1 は常に含む)。
+      CERT_HOSTS: ${CERT_HOSTS:-}
     ports:
       - "4200:80"     # HTTP  (HTTPS へ自動リダイレクト)
       - "4443:443"    # HTTPS (自己署名証明書)

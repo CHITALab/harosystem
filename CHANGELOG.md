@@ -64,3 +64,14 @@
   - 原因：RRULE 展開を UTC で行い `BYDAY` の曜日が UTC 基準 → JST で全体が1日ズレ（初回＝開始日も生成されず、平日設定で月曜が抜け土曜が入る）。
   - 方針：時刻の保存/転送はすべて UTC、繰り返しの「曜日解釈」だけクライアントが渡す TZ で行う（バックエンドに固定 TZ を持たない）。
   - `recurrence.py expand_occurrences(..., tz)`：`dtstart` を `tz` に変換して展開 → 各回を UTC に戻して返却。naive datetime は UTC 補完。`events.py` に `tz` クエリ（`_resolve_tz` で長さ/文字種を制限してから `ZoneInfo` 化）。フロントは `Intl…timeZone` を送付。`tzdata` 追加。回帰テスト `backend/tests/test_recurrence.py`（+ `requirements-dev.txt`）。
+
+## インフラ・運用 (Infra)
+
+- **`localhost` ハードコーディングの排除（LAN 内の別 PC からのアクセス対応）**
+  - 目的：このアプリをサーバーに置き、同一 LAN 内の他 PC のブラウザから `https://<サーバーIP>:4443` で閲覧できるようにする（IPv4 のみ対応で十分）。
+  - バックエンド：CORS 許可オリジンを `CORS_ORIGINS` 環境変数化（`main.py`、未設定なら `localhost`/`127.0.0.1` のみ）。
+  - 証明書：`frontend/generate-cert.sh` が `CERT_HOSTS`（カンマ区切り。IPv4 は `IP:`、それ以外は `DNS:`）を自己署名証明書の SAN に追加。証明書生成をビルド時→**コンテナ起動時**に移し（`Dockerfile` で `/docker-entrypoint.d/` に配置）、起動時の `CERT_HOSTS` を反映できるように。
+  - `docker-compose.yml` に `CORS_ORIGINS` / `CERT_HOSTS` を env 注入、`.env.example`・`README.md` に外部アクセス手順を追記。
+  - 元から LAN 対応済みで未変更：フロントの API は相対パス `/api`（`api-base.ts`）、nginx は `server_name _;` ＋ `return 301 https://$host:4443$request_uri;`（`$host` 使用で localhost 固定なし）、ポートは `0.0.0.0` バインド。
+  - 動作確認：`CERT_HOSTS=192.168.1.50,server.local` で SAN に `IP:192.168.1.50`/`DNS:server.local` 反映、HTTP→HTTPS リダイレクトが宛先ホストを維持、health 200、API 相対疎通、env 無しで従来動作に回帰、jest 67/67。
+  - 補足：自己署名のため別 PC のブラウザの「安全でない」警告自体は残る（`CERT_HOSTS` で消えるのは "ホスト名不一致" の方）。本番は正式な証明書を使う前提。
